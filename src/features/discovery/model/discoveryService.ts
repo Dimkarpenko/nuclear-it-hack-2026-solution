@@ -2,6 +2,7 @@ import { DeviceIdentity } from "@/features/security";
 
 import {
   DiscoveredPeer,
+  DiscoveryConnectionState,
   DiscoverySignal,
   DiscoveryStatus,
   SignalKind,
@@ -18,6 +19,11 @@ type DiscoveryWireMessage =
   | {
       type: "signal";
       signal: DiscoverySignal;
+    }
+  | {
+      type: "peer-offline";
+      peerId: string;
+      sentAt: number;
     };
 
 type MessageEventLike = { data: string };
@@ -37,29 +43,41 @@ const PRUNE_INTERVAL_MS = 6_000;
 
 class DiscoveryService {
   private channel: BroadcastChannelLike | null = null;
+  private socket: WebSocket | null = null;
+  private relayUrl: string | null = null;
+  private connectionState: DiscoveryConnectionState = "disconnected";
   private announceTimer: ReturnType<typeof setInterval> | null = null;
   private pruneTimer: ReturnType<typeof setInterval> | null = null;
   private identity: DeviceIdentity | null = null;
   private peers = new Map<string, DiscoveredPeer>();
   private peerSubscribers = new Set<(peers: DiscoveredPeer[]) => void>();
   private signalSubscribers = new Set<(signal: DiscoverySignal) => void>();
+  private statusSubscribers = new Set<(status: DiscoveryStatus) => void>();
+
+  setRelayUrl(url: string | null): void {
+    const value = (url ?? "").trim();
+    this.relayUrl = value.length > 0 ? value : null;
+
+    if (this.identity && this.announceTimer) {
+      this.reconnectTransport();
+    }
+
+    this.emitStatus();
+  }
+
+  getRelayUrl(): string | null {
+    return this.relayUrl;
+  }
 
   start(identity: DeviceIdentity): void {
     this.identity = identity;
 
-    if (!this.channel) {
-      this.channel = this.createChannel();
-      if (this.channel) {
-        this.channel.onmessage = (event) => {
-          this.handleWireMessage(event.data);
-        };
-      }
-    }
-
+    this.ensureTransport();
     this.sendAnnounce();
 
     if (!this.announceTimer) {
       this.announceTimer = setInterval(() => {
+        this.ensureTransport();
         this.sendAnnounce();
       }, ANNOUNCE_INTERVAL_MS);
     }
@@ -69,6 +87,8 @@ class DiscoveryService {
         this.pruneStalePeers();
       }, PRUNE_INTERVAL_MS);
     }
+
+    this.emitStatus();
   }
 
   stop(): void {
@@ -82,22 +102,30 @@ class DiscoveryService {
       this.pruneTimer = null;
     }
 
-    if (this.channel) {
-      this.channel.close();
-      this.channel = null;
-    }
-
+    this.closeTransport();
+    this.connectionState = "disconnected";
     this.peers.clear();
     this.emitPeers();
+    this.emitStatus();
   }
 
   getStatus(): DiscoveryStatus {
+    const hasRelay = this.relayUrl !== null;
+
     return {
       isRunning: this.announceTimer !== null,
-      transport: this.channel ? "broadcast-web-local" : "unavailable",
-      scope: this.channel ? "same-device-browser" : "local-network",
+      transport: hasRelay
+        ? this.socket && this.socket.readyState === 1
+          ? "lan-relay"
+          : "unavailable"
+        : this.channel
+          ? "broadcast-web-local"
+          : "unavailable",
+      scope: hasRelay ? "local-network" : "same-device-browser",
       internetRequired: false,
       localPeerId: this.identity?.deviceId ?? null,
+      relayUrl: this.relayUrl,
+      connectionState: this.connectionState,
     };
   }
 
@@ -122,12 +150,20 @@ class DiscoveryService {
     };
   }
 
+  subscribeStatus(listener: (status: DiscoveryStatus) => void): () => void {
+    this.statusSubscribers.add(listener);
+    listener(this.getStatus());
+    return () => {
+      this.statusSubscribers.delete(listener);
+    };
+  }
+
   sendSignal(
     toPeerId: string,
     kind: SignalKind,
     payload: string | null = null,
   ): void {
-    if (!this.channel || !this.identity) {
+    if (!this.identity) {
       return;
     }
 
@@ -140,12 +176,10 @@ class DiscoveryService {
       sentAt: Date.now(),
     };
 
-    const wire: DiscoveryWireMessage = {
+    this.sendWireMessage({
       type: "signal",
       signal,
-    };
-
-    this.channel.postMessage(JSON.stringify(wire));
+    });
   }
 
   sendChatText(toPeerId: string, text: string): void {
@@ -172,20 +206,121 @@ class DiscoveryService {
     }
   }
 
-  private sendAnnounce(): void {
-    if (!this.channel || !this.identity) {
+  private connectRelay(): void {
+    if (!this.relayUrl || this.socket) {
       return;
     }
 
-    const wire: DiscoveryWireMessage = {
+    try {
+      this.connectionState = "connecting";
+      this.emitStatus();
+
+      const socket = new WebSocket(this.relayUrl);
+      this.socket = socket;
+
+      socket.onopen = () => {
+        this.connectionState = "connected";
+        this.emitStatus();
+        this.sendAnnounce();
+      };
+
+      socket.onmessage = (event) => {
+        const data =
+          typeof event.data === "string" ? event.data : String(event.data);
+        this.handleWireMessage(data);
+      };
+
+      socket.onerror = () => {
+        this.connectionState = "error";
+        this.emitStatus();
+      };
+
+      socket.onclose = () => {
+        this.socket = null;
+        this.connectionState = "disconnected";
+        this.emitStatus();
+      };
+    } catch {
+      this.connectionState = "error";
+      this.emitStatus();
+    }
+  }
+
+  private ensureTransport(): void {
+    if (this.relayUrl) {
+      if (this.channel) {
+        this.channel.close();
+        this.channel = null;
+      }
+
+      this.connectRelay();
+      return;
+    }
+
+    if (this.socket) {
+      this.socket.close();
+      this.socket = null;
+      this.connectionState = "disconnected";
+    }
+
+    if (!this.channel) {
+      this.channel = this.createChannel();
+      if (this.channel) {
+        this.channel.onmessage = (event) => {
+          this.handleWireMessage(event.data);
+        };
+        this.connectionState = "connected";
+      } else {
+        this.connectionState = "disconnected";
+      }
+      this.emitStatus();
+    }
+  }
+
+  private closeTransport(): void {
+    if (this.channel) {
+      this.channel.close();
+      this.channel = null;
+    }
+
+    if (this.socket) {
+      this.socket.close();
+      this.socket = null;
+    }
+  }
+
+  private reconnectTransport(): void {
+    this.closeTransport();
+    this.connectionState = "disconnected";
+    this.ensureTransport();
+    this.sendAnnounce();
+  }
+
+  private sendWireMessage(message: DiscoveryWireMessage): void {
+    const raw = JSON.stringify(message);
+
+    if (this.socket && this.socket.readyState === 1) {
+      this.socket.send(raw);
+      return;
+    }
+
+    if (this.channel) {
+      this.channel.postMessage(raw);
+    }
+  }
+
+  private sendAnnounce(): void {
+    if (!this.identity) {
+      return;
+    }
+
+    this.sendWireMessage({
       type: "announce",
       peerId: this.identity.deviceId,
       displayName: this.identity.displayName,
       publicKey: this.identity.publicKey,
       sentAt: Date.now(),
-    };
-
-    this.channel.postMessage(JSON.stringify(wire));
+    });
   }
 
   private handleWireMessage(raw: string): void {
@@ -210,10 +345,17 @@ class DiscoveryService {
         peerId: parsed.peerId,
         displayName: parsed.displayName,
         publicKey: parsed.publicKey,
-        transport: "broadcast-web-local",
+        transport: this.relayUrl ? "lan-relay" : "broadcast-web-local",
         lastSeenAt: Date.now(),
       });
       this.emitPeers();
+      return;
+    }
+
+    if (parsed.type === "peer-offline") {
+      if (this.peers.delete(parsed.peerId)) {
+        this.emitPeers();
+      }
       return;
     }
 
@@ -245,6 +387,11 @@ class DiscoveryService {
   private emitPeers(): void {
     const peers = this.getPeers();
     this.peerSubscribers.forEach((subscriber) => subscriber(peers));
+  }
+
+  private emitStatus(): void {
+    const status = this.getStatus();
+    this.statusSubscribers.forEach((subscriber) => subscriber(status));
   }
 
   private makeId(): string {

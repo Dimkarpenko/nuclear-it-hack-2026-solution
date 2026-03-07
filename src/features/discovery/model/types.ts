@@ -1,6 +1,15 @@
-export type DiscoveryTransport = "broadcast-web-local" | "unavailable";
+export type DiscoveryTransport =
+  | "broadcast-web-local"
+  | "lan-relay"
+  | "unavailable";
 
 export type DiscoveryScope = "same-device-browser" | "local-network";
+
+export type DiscoveryConnectionState =
+  | "connected"
+  | "connecting"
+  | "disconnected"
+  | "error";
 
 export interface DiscoveredPeer {
   peerId: string;
@@ -27,6 +36,8 @@ export interface DiscoveryStatus {
   scope: DiscoveryScope;
   internetRequired: false;
   localPeerId: string | null;
+  relayUrl: string | null;
+  connectionState: DiscoveryConnectionState;
 }
 
 export interface DiscoveryLogEntry {

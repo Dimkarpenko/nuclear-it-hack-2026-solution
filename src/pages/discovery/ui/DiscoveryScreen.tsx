@@ -10,8 +10,18 @@ function formatAge(lastSeenAt: number): string {
 }
 
 export function DiscoveryScreen() {
-  const { status, peers, logs, refreshNow, sendPing, sendChatText } =
-    useDiscoveryViewModel();
+  const {
+    status,
+    relayUrlInput,
+    setRelayUrlInput,
+    peers,
+    logs,
+    refreshNow,
+    applyRelayUrl,
+    useBrowserLocalTransport,
+    sendPing,
+    sendChatText,
+  } = useDiscoveryViewModel();
   const [drafts, setDrafts] = useState<Record<string, string>>({});
 
   const updateDraft = (peerId: string, value: string) => {
@@ -39,6 +49,33 @@ export function DiscoveryScreen() {
       </Text>
 
       <View style={styles.card}>
+        <Text style={styles.cardTitle}>LAN relay for Android</Text>
+        <TextInput
+          value={relayUrlInput}
+          onChangeText={setRelayUrlInput}
+          style={styles.relayInput}
+          placeholder="ws://192.168.1.10:8787"
+          placeholderTextColor="#7e86a8"
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        <Pressable
+          style={styles.actionButton}
+          onPress={() => applyRelayUrl().catch(() => undefined)}
+        >
+          <Text style={styles.actionButtonText}>Apply relay URL</Text>
+        </Pressable>
+        <Pressable
+          style={styles.secondaryActionButton}
+          onPress={() => useBrowserLocalTransport().catch(() => undefined)}
+        >
+          <Text style={styles.secondaryActionButtonText}>
+            Use browser local transport
+          </Text>
+        </Pressable>
+      </View>
+
+      <View style={styles.card}>
         <Text style={styles.cardTitle}>Status</Text>
         <Text style={styles.statusRow}>
           Running: {status.isRunning ? "yes" : "no"}
@@ -47,6 +84,12 @@ export function DiscoveryScreen() {
         <Text style={styles.statusRow}>Scope: {status.scope}</Text>
         <Text style={styles.statusRow}>
           Internet required: {status.internetRequired ? "yes" : "no"}
+        </Text>
+        <Text style={styles.statusRow}>
+          Connection: {status.connectionState}
+        </Text>
+        <Text style={styles.statusRow}>
+          Relay URL: {status.relayUrl ?? "-"}
         </Text>
         <Text style={styles.statusRow}>
           Local peer: {status.localPeerId ?? "-"}

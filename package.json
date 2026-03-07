@@ -8,6 +8,7 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
+    "relay:lan": "node scripts/lan-relay-server.mjs",
     "typecheck": "tsc --noEmit",
     "check": "npm run typecheck"
   },
@@ -26,7 +27,8 @@
     "react-native": "0.83.2",
     "react-native-safe-area-context": "^5.7.0",
     "react-native-screens": "^4.24.0",
-    "react-native-web": "^0.21.0"
+    "react-native-web": "^0.21.0",
+    "ws": "^8.19.0"
   },
   "devDependencies": {
     "@types/react": "~19.2.2",

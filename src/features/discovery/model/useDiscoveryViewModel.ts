@@ -26,14 +26,19 @@ export function useDiscoveryViewModel() {
     scope: "local-network",
     internetRequired: false,
     localPeerId: null,
+    relayUrl: null,
+    connectionState: "disconnected",
   });
   const [peers, setPeers] = useState<DiscoveredPeer[]>([]);
   const [logs, setLogs] = useState<DiscoveryLogEntry[]>([]);
+  const [relayUrlInput, setRelayUrlInput] = useState("");
 
   const service = useMemo(() => getDiscoveryService(), []);
 
   useEffect(() => {
     let mounted = true;
+
+    setRelayUrlInput(service.getRelayUrl() ?? "");
 
     getOrCreateDeviceIdentity()
       .then((identity) => {
@@ -45,6 +50,10 @@ export function useDiscoveryViewModel() {
         setStatus(service.getStatus());
       })
       .catch(() => undefined);
+
+    const unsubscribeStatus = service.subscribeStatus((nextStatus) => {
+      setStatus(nextStatus);
+    });
 
     const unsubscribePeers = service.subscribePeers((nextPeers) => {
       setPeers(nextPeers);
@@ -69,6 +78,7 @@ export function useDiscoveryViewModel() {
 
     return () => {
       mounted = false;
+      unsubscribeStatus();
       unsubscribePeers();
       unsubscribeSignals();
     };
@@ -79,6 +89,21 @@ export function useDiscoveryViewModel() {
     service.start(identity);
     setStatus(service.getStatus());
     setPeers(service.getPeers());
+  };
+
+  const applyRelayUrl = async () => {
+    const identity = await getOrCreateDeviceIdentity();
+    service.setRelayUrl(relayUrlInput);
+    service.start(identity);
+    setStatus(service.getStatus());
+  };
+
+  const useBrowserLocalTransport = async () => {
+    const identity = await getOrCreateDeviceIdentity();
+    service.setRelayUrl(null);
+    setRelayUrlInput("");
+    service.start(identity);
+    setStatus(service.getStatus());
   };
 
   const sendPing = (peerId: string) => {
@@ -131,9 +156,13 @@ export function useDiscoveryViewModel() {
 
   return {
     status,
+    relayUrlInput,
+    setRelayUrlInput,
     peers,
     logs,
     refreshNow,
+    applyRelayUrl,
+    useBrowserLocalTransport,
     sendPing,
     sendChatText,
   };
