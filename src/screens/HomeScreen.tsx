@@ -1,11 +1,17 @@
 import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { NativeStackScreenProps } from "@react-navigation/native-stack";
 
 import { StorageStats } from "../domain/models";
 import { getStorageStats } from "../storage/database";
+import { getOrCreateDeviceIdentity } from "../security";
+import { RootStackParamList } from "../app/navigation/RootNavigator";
 
-export function HomeScreen() {
+type Props = NativeStackScreenProps<RootStackParamList, "Home">;
+
+export function HomeScreen({ navigation }: Props) {
   const [stats, setStats] = useState<StorageStats | null>(null);
+  const [deviceId, setDeviceId] = useState<string>("");
 
   const loadStats = async () => {
     const next = await getStorageStats();
@@ -13,15 +19,23 @@ export function HomeScreen() {
   };
 
   useEffect(() => {
-    loadStats().catch(() => undefined);
+    Promise.all([loadStats(), getOrCreateDeviceIdentity()])
+      .then(([, identity]) => {
+        setDeviceId(identity.deviceId);
+      })
+      .catch(() => undefined);
   }, []);
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Local messenger MVP initialized.</Text>
       <Text style={styles.subtitle}>
-        Stage 2 completed: domain models and local SQLite persistence.
+        Stage 3 in progress: secure identity and pairing flow.
       </Text>
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Device</Text>
+        <Text style={styles.metric}>ID: {deviceId || "-"}</Text>
+      </View>
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Local storage</Text>
         <Text style={styles.metric}>Peers: {stats?.peers ?? 0}</Text>
@@ -34,6 +48,12 @@ export function HomeScreen() {
         onPress={() => loadStats().catch(() => undefined)}
       >
         <Text style={styles.buttonText}>Refresh stats</Text>
+      </Pressable>
+      <Pressable
+        style={styles.secondaryButton}
+        onPress={() => navigation.navigate("Pairing")}
+      >
+        <Text style={styles.secondaryButtonText}>Open pairing</Text>
       </Pressable>
     </View>
   );
@@ -85,6 +105,19 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     color: "#03111c",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  secondaryButton: {
+    marginTop: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#2b3154",
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  secondaryButtonText: {
+    color: "#dbe3ff",
     fontSize: 15,
     fontWeight: "700",
   },
