@@ -7,7 +7,7 @@ import { StorageStats } from "@/entities/messenger";
 import { getOrCreateDeviceIdentity } from "@/features/security";
 import { getStorageStats } from "@/shared/lib/storage";
 
-type Props = NativeStackScreenProps<RootStackParamList, "Home">;
+type Props = NativeStackScreenProps<RootStackParamList, "Main">;
 
 export function HomeScreen({ navigation }: Props) {
   const [stats, setStats] = useState<StorageStats | null>(null);
@@ -60,12 +60,6 @@ export function HomeScreen({ navigation }: Props) {
         onPress={() => navigation.navigate("Discovery")}
       >
         <Text style={styles.secondaryButtonText}>Open discovery</Text>
-      </Pressable>
-      <Pressable
-        style={styles.secondaryButton}
-        onPress={() => navigation.navigate("Chat")}
-      >
-        <Text style={styles.secondaryButtonText}>Open chats</Text>
       </Pressable>
     </View>
   );

@@ -7,25 +7,63 @@ export const styles = StyleSheet.create({
   },
   content: {
     gap: 12,
-    padding: 16,
-    paddingBottom: 24,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 156,
+  },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   title: {
-    fontSize: 24,
-    fontWeight: "700",
+    fontSize: 30,
+    fontWeight: "800",
     color: "#f2f5ff",
   },
   subtitle: {
     marginTop: 4,
     fontSize: 14,
-    color: "#b8c0df",
+    color: "#9ca8d3",
   },
-  card: {
+  refreshPill: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#2b3154",
+    backgroundColor: "#101326",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  refreshPillText: {
+    color: "#d8e0ff",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  identityCard: {
     borderRadius: 16,
     borderWidth: 1,
     borderColor: "#2b3154",
     backgroundColor: "#101326",
-    padding: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    gap: 4,
+  },
+  identityLabel: {
+    color: "#8f9bc4",
+    fontSize: 12,
+  },
+  identityValue: {
+    color: "#f2f5ff",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  card: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#2b3154",
+    backgroundColor: "#101326",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     gap: 8,
   },
   cardTitle: {
@@ -33,55 +71,39 @@ export const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
   },
-  statusRow: {
-    color: "#d6dcf3",
-    fontSize: 14,
-  },
-  actionButton: {
-    marginTop: 8,
-    backgroundColor: "#57d3ff",
-    borderRadius: 10,
-    paddingVertical: 10,
-    alignItems: "center",
-  },
-  actionButtonText: {
-    color: "#03111c",
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  chatTabsRow: {
-    flexDirection: "row",
+  chatList: {
     gap: 8,
   },
-  chatTab: {
-    minWidth: 140,
+  chatRow: {
     borderRadius: 12,
     borderWidth: 1,
     borderColor: "#2b3154",
+    backgroundColor: "#0f1530",
     paddingHorizontal: 12,
     paddingVertical: 10,
-    backgroundColor: "#111833",
   },
-  chatTabActive: {
+  chatRowActive: {
     borderColor: "#57d3ff",
-    backgroundColor: "#132340",
+    backgroundColor: "#132039",
   },
-  chatTabName: {
+  chatName: {
     color: "#f2f5ff",
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "700",
   },
-  chatTabMeta: {
-    color: "#9ba6cd",
-    fontSize: 12,
+  chatMeta: {
     marginTop: 2,
+    color: "#8f9bc4",
+    fontSize: 12,
   },
   emptyText: {
     color: "#9ba6cd",
     fontSize: 14,
   },
   messageList: {
-    maxHeight: 320,
+    maxHeight: 340,
+  },
+  messageListContent: {
     gap: 8,
   },
   bubbleOut: {
@@ -128,6 +150,7 @@ export const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 8,
     alignItems: "center",
+    marginTop: 4,
   },
   input: {
     flex: 1,
@@ -198,5 +221,69 @@ export const styles = StyleSheet.create({
   transferMeta: {
     color: "#9ba6cd",
     fontSize: 12,
+  },
+  fab: {
+    position: "absolute",
+    right: 20,
+    bottom: 98,
+    width: 62,
+    height: 62,
+    borderRadius: 31,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#57d3ff",
+    shadowColor: "#000",
+    shadowOpacity: 0.28,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 6,
+  },
+  fabIcon: {
+    color: "#03111c",
+    fontSize: 34,
+    lineHeight: 36,
+    fontWeight: "700",
+    marginTop: -2,
+  },
+  fabBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(3, 5, 14, 0.56)",
+    justifyContent: "flex-end",
+    paddingHorizontal: 16,
+    paddingBottom: 98,
+  },
+  fabMenu: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#2b3154",
+    backgroundColor: "#101326",
+    overflow: "hidden",
+  },
+  fabAction: {
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    borderBottomWidth: 1,
+    borderBottomColor: "#20294d",
+    gap: 2,
+  },
+  fabActionTitle: {
+    color: "#f2f5ff",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  fabActionSubtitle: {
+    color: "#94a1cd",
+    fontSize: 12,
+  },
+  fabCloseAction: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: "#0d1226",
+    alignItems: "center",
+  },
+  fabCloseActionText: {
+    color: "#9ba6cd",
+    fontSize: 14,
+    fontWeight: "700",
   },
 });

@@ -1,5 +1,16 @@
-import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { useState } from "react";
+import {
+  Modal,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import { useNavigation } from "@react-navigation/native";
+import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
+import { RootStackParamList } from "@/core/navigation/RootNavigator";
 import { styles } from "./ChatScreen.styles";
 import { useChatViewModel } from "./useChatViewModel";
 
@@ -16,11 +27,20 @@ function formatPercent(transferredBytes: number, totalBytes: number): string {
   return `${Math.round(ratio * 100)}%`;
 }
 
+function formatLastActivity(value: number | null): string {
+  if (!value) {
+    return "No messages yet";
+  }
+
+  return new Date(value).toLocaleString();
+}
+
 export function ChatScreen() {
+  const navigation =
+    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+
   const {
     isReady,
-    statusText,
-    relayUrl,
     localPeerId,
     chats,
     selectedChatId,
@@ -30,7 +50,6 @@ export function ChatScreen() {
     setDraft,
     fileDraft,
     setFileDraft,
-    reliability,
     selectChat,
     refresh,
     sendMessage,
@@ -39,180 +58,226 @@ export function ChatScreen() {
 
   const canSend = draft.trim().length > 0 && selectedChatId !== null;
   const canSendFile = fileDraft.trim().length > 0 && selectedChatId !== null;
+  const [isFabMenuOpen, setIsFabMenuOpen] = useState(false);
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <View>
-        <Text style={styles.title}>Chats</Text>
-        <Text style={styles.subtitle}>
-          Reliable local messaging with ACK status.
-        </Text>
-      </View>
+    <View style={styles.container}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.content}
+      >
+        <View style={styles.headerRow}>
+          <View>
+            <Text style={styles.title}>Чаты</Text>
+            <Text style={styles.subtitle}>Локальный мессенджер без облака</Text>
+          </View>
+          <Pressable
+            style={styles.refreshPill}
+            onPress={() => refresh().catch(() => undefined)}
+          >
+            <Text style={styles.refreshPillText}>Обновить</Text>
+          </Pressable>
+        </View>
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Transport</Text>
-        <Text style={styles.statusRow}>State: {statusText}</Text>
-        <Text style={styles.statusRow}>
-          Relay: {relayUrl ?? "browser-local"}
-        </Text>
-        <Text style={styles.statusRow}>Local peer: {localPeerId ?? "-"}</Text>
-        <Pressable
-          style={styles.actionButton}
-          onPress={() => refresh().catch(() => undefined)}
-        >
-          <Text style={styles.actionButtonText}>Refresh chats</Text>
-        </Pressable>
-      </View>
+        <View style={styles.identityCard}>
+          <Text style={styles.identityLabel}>Это устройство</Text>
+          <Text style={styles.identityValue}>{localPeerId ?? "-"}</Text>
+        </View>
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Reliable delivery</Text>
-        <Text style={styles.statusRow}>Pending: {reliability.pending}</Text>
-        <Text style={styles.statusRow}>Delivered: {reliability.delivered}</Text>
-        <Text style={styles.statusRow}>Failed: {reliability.failed}</Text>
-        <Text style={styles.statusRow}>
-          ACK received: {reliability.acksReceived}
-        </Text>
-        <Text style={styles.statusRow}>
-          Duplicates dropped: {reliability.duplicatesDropped}
-        </Text>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Private chats ({chats.length})</Text>
-        {chats.length === 0 ? (
-          <Text style={styles.emptyText}>
-            No chats yet. Pair a peer and open discovery.
-          </Text>
-        ) : (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <View style={styles.chatTabsRow}>
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Список чатов</Text>
+          {chats.length === 0 ? (
+            <Text style={styles.emptyText}>
+              Нажми + чтобы добавить собеседника
+            </Text>
+          ) : (
+            <View style={styles.chatList}>
               {chats.map((chat) => {
                 const active = chat.id === selectedChatId;
                 return (
                   <Pressable
                     key={chat.id}
                     style={[
-                      styles.chatTab,
-                      active ? styles.chatTabActive : null,
+                      styles.chatRow,
+                      active ? styles.chatRowActive : null,
                     ]}
                     onPress={() => selectChat(chat.id)}
                   >
-                    <Text style={styles.chatTabName}>{chat.resolvedTitle}</Text>
-                    <Text style={styles.chatTabMeta}>
+                    <Text style={styles.chatName}>{chat.resolvedTitle}</Text>
+                    <Text style={styles.chatMeta}>
                       {chat.participantPeerId.slice(0, 12)}
+                    </Text>
+                    <Text style={styles.chatMeta}>
+                      {formatLastActivity(chat.lastMessageAt)}
                     </Text>
                   </Pressable>
                 );
               })}
             </View>
-          </ScrollView>
-        )}
-      </View>
+          )}
+        </View>
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Messages</Text>
-        {!isReady ? (
-          <Text style={styles.emptyText}>Loading...</Text>
-        ) : selectedChatId === null ? (
-          <Text style={styles.emptyText}>Select a chat</Text>
-        ) : messages.length === 0 ? (
-          <Text style={styles.emptyText}>No messages yet</Text>
-        ) : (
-          <ScrollView style={styles.messageList}>
-            {messages.map((message) => {
-              const isOutgoing = message.senderPeerId === localPeerId;
-              return (
-                <View
-                  key={message.id}
-                  style={isOutgoing ? styles.bubbleOut : styles.bubbleIn}
-                >
-                  <Text
-                    style={
-                      isOutgoing ? styles.bubbleTextOut : styles.bubbleTextIn
-                    }
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Диалог</Text>
+          {!isReady ? (
+            <Text style={styles.emptyText}>Загрузка данных...</Text>
+          ) : selectedChatId === null ? (
+            <Text style={styles.emptyText}>
+              Выбери чат, чтобы начать переписку
+            </Text>
+          ) : messages.length === 0 ? (
+            <Text style={styles.emptyText}>Отправь первое сообщение</Text>
+          ) : (
+            <ScrollView
+              style={styles.messageList}
+              contentContainerStyle={styles.messageListContent}
+            >
+              {messages.map((message) => {
+                const isOutgoing = message.senderPeerId === localPeerId;
+                return (
+                  <View
+                    key={message.id}
+                    style={isOutgoing ? styles.bubbleOut : styles.bubbleIn}
                   >
-                    {message.body}
-                  </Text>
-                  <Text
-                    style={
-                      isOutgoing ? styles.bubbleMetaOut : styles.bubbleMetaIn
-                    }
-                  >
-                    {formatMessageMeta(message.createdAt, message.status)}
-                  </Text>
-                </View>
-              );
-            })}
-          </ScrollView>
-        )}
+                    <Text
+                      style={
+                        isOutgoing ? styles.bubbleTextOut : styles.bubbleTextIn
+                      }
+                    >
+                      {message.body}
+                    </Text>
+                    <Text
+                      style={
+                        isOutgoing ? styles.bubbleMetaOut : styles.bubbleMetaIn
+                      }
+                    >
+                      {formatMessageMeta(message.createdAt, message.status)}
+                    </Text>
+                  </View>
+                );
+              })}
+            </ScrollView>
+          )}
 
-        <View style={styles.composerRow}>
+          <View style={styles.composerRow}>
+            <TextInput
+              value={draft}
+              onChangeText={setDraft}
+              style={styles.input}
+              placeholder="Введите сообщение"
+              placeholderTextColor="#7e86a8"
+              editable={selectedChatId !== null}
+            />
+            <Pressable
+              style={[
+                styles.sendButton,
+                canSend ? null : styles.disabledSendButton,
+              ]}
+              onPress={() => sendMessage().catch(() => undefined)}
+              disabled={!canSend}
+            >
+              <Text style={styles.sendButtonText}>Отправить</Text>
+            </Pressable>
+          </View>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Передача файла (демо)</Text>
           <TextInput
-            value={draft}
-            onChangeText={setDraft}
-            style={styles.input}
-            placeholder="Type local message"
+            value={fileDraft}
+            onChangeText={setFileDraft}
+            style={styles.fileInput}
+            placeholder="Текст файла для отправки по частям"
             placeholderTextColor="#7e86a8"
             editable={selectedChatId !== null}
+            multiline
+            numberOfLines={3}
           />
           <Pressable
             style={[
-              styles.sendButton,
-              canSend ? null : styles.disabledSendButton,
+              styles.fileButton,
+              canSendFile ? null : styles.disabledSendButton,
             ]}
-            onPress={() => sendMessage().catch(() => undefined)}
-            disabled={!canSend}
+            onPress={() => sendFile().catch(() => undefined)}
+            disabled={!canSendFile}
           >
-            <Text style={styles.sendButtonText}>Send</Text>
+            <Text style={styles.fileButtonText}>Отправить файл</Text>
           </Pressable>
+
+          {transfers.length === 0 ? (
+            <Text style={styles.emptyText}>Передач пока нет</Text>
+          ) : (
+            <View style={styles.transferList}>
+              {transfers.map((transfer) => (
+                <View key={transfer.id} style={styles.transferRow}>
+                  <Text style={styles.transferName}>{transfer.fileName}</Text>
+                  <Text style={styles.transferMeta}>
+                    {transfer.direction} · {transfer.status}
+                  </Text>
+                  <Text style={styles.transferMeta}>
+                    {transfer.transferredBytes}/{transfer.totalBytes} B ·{" "}
+                    {formatPercent(
+                      transfer.transferredBytes,
+                      transfer.totalBytes,
+                    )}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
         </View>
-      </View>
+      </ScrollView>
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>File transfer</Text>
-        <TextInput
-          value={fileDraft}
-          onChangeText={setFileDraft}
-          style={styles.fileInput}
-          placeholder="Type file content for chunked send"
-          placeholderTextColor="#7e86a8"
-          editable={selectedChatId !== null}
-          multiline
-          numberOfLines={3}
-        />
+      <Modal
+        transparent
+        visible={isFabMenuOpen}
+        animationType="fade"
+        onRequestClose={() => setIsFabMenuOpen(false)}
+      >
         <Pressable
-          style={[
-            styles.fileButton,
-            canSendFile ? null : styles.disabledSendButton,
-          ]}
-          onPress={() => sendFile().catch(() => undefined)}
-          disabled={!canSendFile}
+          style={styles.fabBackdrop}
+          onPress={() => setIsFabMenuOpen(false)}
         >
-          <Text style={styles.fileButtonText}>Send file in chunks</Text>
-        </Pressable>
+          <View style={styles.fabMenu}>
+            <Pressable
+              style={styles.fabAction}
+              onPress={() => {
+                setIsFabMenuOpen(false);
+                navigation.navigate("Discovery");
+              }}
+            >
+              <Text style={styles.fabActionTitle}>Найти рядом</Text>
+              <Text style={styles.fabActionSubtitle}>
+                Поиск устройств в локальной сети
+              </Text>
+            </Pressable>
 
-        {transfers.length === 0 ? (
-          <Text style={styles.emptyText}>No transfers yet</Text>
-        ) : (
-          <View style={styles.transferList}>
-            {transfers.map((transfer) => (
-              <View key={transfer.id} style={styles.transferRow}>
-                <Text style={styles.transferName}>{transfer.fileName}</Text>
-                <Text style={styles.transferMeta}>
-                  {transfer.direction} · {transfer.status}
-                </Text>
-                <Text style={styles.transferMeta}>
-                  {transfer.transferredBytes}/{transfer.totalBytes} B ·{" "}
-                  {formatPercent(
-                    transfer.transferredBytes,
-                    transfer.totalBytes,
-                  )}
-                </Text>
-              </View>
-            ))}
+            <Pressable
+              style={styles.fabAction}
+              onPress={() => {
+                setIsFabMenuOpen(false);
+                navigation.navigate("Pairing");
+              }}
+            >
+              <Text style={styles.fabActionTitle}>Подключить по коду</Text>
+              <Text style={styles.fabActionSubtitle}>
+                Генерация или ввод случайной код-фразы
+              </Text>
+            </Pressable>
+
+            <Pressable
+              style={styles.fabCloseAction}
+              onPress={() => setIsFabMenuOpen(false)}
+            >
+              <Text style={styles.fabCloseActionText}>Отмена</Text>
+            </Pressable>
           </View>
-        )}
-      </View>
-    </ScrollView>
+        </Pressable>
+      </Modal>
+
+      <Pressable style={styles.fab} onPress={() => setIsFabMenuOpen(true)}>
+        <Text style={styles.fabIcon}>+</Text>
+      </Pressable>
+    </View>
   );
 }
