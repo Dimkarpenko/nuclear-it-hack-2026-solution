@@ -11,8 +11,9 @@
 * Отправка файлов 
 
 ## Использованные технологии:
-1. Java
-2. WebRTC
-3. Mesh - передача данных
+1. Expo
+2. React Native
+3. WebRTC
+4. Mesh - передача данных
 
 Запуск: ``` npx expo run:android ```
