@@ -1,5 +1,5 @@
-import { Peer } from "../../domain/models";
-import { getDatabase } from "../database";
+import { Peer } from "@/entities/messenger";
+import { getDatabase } from "@/shared/lib/storage";
 
 interface PeerRow {
   id: string;

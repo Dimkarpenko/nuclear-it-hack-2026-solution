@@ -4,8 +4,8 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { useEffect, useState } from "react";
 
-import { RootNavigator } from "./navigation/RootNavigator";
-import { initializeDatabase } from "../storage/database";
+import { RootNavigator } from "@/app/navigation/RootNavigator";
+import { initializeDatabase } from "@/shared/lib/storage";
 
 const appTheme = {
   ...DarkTheme,

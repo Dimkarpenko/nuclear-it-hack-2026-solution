@@ -2,10 +2,10 @@ import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 
-import { StorageStats } from "../domain/models";
-import { getStorageStats } from "../storage/database";
-import { getOrCreateDeviceIdentity } from "../security";
-import { RootStackParamList } from "../app/navigation/RootNavigator";
+import { RootStackParamList } from "@/app/navigation/RootNavigator";
+import { StorageStats } from "@/entities/messenger";
+import { getOrCreateDeviceIdentity } from "@/features/security";
+import { getStorageStats } from "@/shared/lib/storage";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Home">;
 

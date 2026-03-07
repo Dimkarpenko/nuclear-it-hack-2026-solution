@@ -1,5 +1,5 @@
-import { Message, MessageDeliveryStatus } from "../../domain/models";
-import { getDatabase } from "../database";
+import { Message, MessageDeliveryStatus } from "@/entities/messenger";
+import { getDatabase } from "@/shared/lib/storage";
 
 interface MessageRow {
   id: string;

@@ -1,7 +1,7 @@
 import { SQLiteDatabase, openDatabaseAsync } from "expo-sqlite";
 
-import { StorageStats } from "../domain/models";
-import { applySchema } from "./schema";
+import { StorageStats } from "@/entities/messenger";
+import { applySchema } from "@/shared/lib/storage/schema";
 
 let databasePromise: Promise<SQLiteDatabase> | null = null;
 

@@ -1,5 +1,5 @@
-import { Chat } from "../../domain/models";
-import { getDatabase } from "../database";
+import { Chat } from "@/entities/messenger";
+import { getDatabase } from "@/shared/lib/storage";
 
 interface ChatRow {
   id: string;

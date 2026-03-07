@@ -1,5 +1,5 @@
-import { FileTransfer, TransferStatus } from "../../domain/models";
-import { getDatabase } from "../database";
+import { FileTransfer, TransferStatus } from "@/entities/messenger";
+import { getDatabase } from "@/shared/lib/storage";
 
 interface TransferRow {
   id: string;
