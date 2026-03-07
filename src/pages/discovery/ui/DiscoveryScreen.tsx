@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 
-import { useDiscoveryViewModel } from "@/features/discovery";
+import { useDiscoveryViewModel } from "@/features/discovery/model/useDiscoveryViewModel";
 import { styles } from "./DiscoveryScreen.styles";
 
 function formatAge(lastSeenAt: number): string {
@@ -15,6 +15,7 @@ export function DiscoveryScreen() {
     relayUrlInput,
     setRelayUrlInput,
     isAutoDetectingRelay,
+    reliability,
     peers,
     logs,
     refreshNow,
@@ -110,6 +111,19 @@ export function DiscoveryScreen() {
         >
           <Text style={styles.actionButtonText}>Refresh discovery</Text>
         </Pressable>
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Reliable delivery</Text>
+        <Text style={styles.statusRow}>Pending: {reliability.pending}</Text>
+        <Text style={styles.statusRow}>Delivered: {reliability.delivered}</Text>
+        <Text style={styles.statusRow}>Failed: {reliability.failed}</Text>
+        <Text style={styles.statusRow}>
+          ACK received: {reliability.acksReceived}
+        </Text>
+        <Text style={styles.statusRow}>
+          Duplicates dropped: {reliability.duplicatesDropped}
+        </Text>
       </View>
 
       <View style={styles.card}>

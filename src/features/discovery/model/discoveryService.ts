@@ -41,6 +41,16 @@ const PEER_TTL_MS = 20_000;
 const ANNOUNCE_INTERVAL_MS = 5_000;
 const PRUNE_INTERVAL_MS = 6_000;
 
+type SignalSendOptions = {
+  id?: string;
+  requiresAck?: boolean;
+  ackForId?: string | null;
+  ttlMs?: number;
+  expiresAt?: number;
+  attempt?: number;
+  maxAttempts?: number;
+};
+
 class DiscoveryService {
   private channel: BroadcastChannelLike | null = null;
   private socket: WebSocket | null = null;
@@ -162,24 +172,33 @@ class DiscoveryService {
     toPeerId: string,
     kind: SignalKind,
     payload: string | null = null,
-  ): void {
+    options?: SignalSendOptions,
+  ): DiscoverySignal | null {
     if (!this.identity) {
-      return;
+      return null;
     }
 
     const signal: DiscoverySignal = {
-      id: this.makeId(),
+      id: options?.id ?? this.makeId(),
       fromPeerId: this.identity.deviceId,
       toPeerId,
       kind,
       payload,
       sentAt: Date.now(),
+      requiresAck: options?.requiresAck,
+      ackForId: options?.ackForId,
+      ttlMs: options?.ttlMs,
+      expiresAt: options?.expiresAt,
+      attempt: options?.attempt,
+      maxAttempts: options?.maxAttempts,
     };
 
     this.sendWireMessage({
       type: "signal",
       signal,
     });
+
+    return signal;
   }
 
   sendChatText(toPeerId: string, text: string): void {
@@ -360,6 +379,10 @@ class DiscoveryService {
     }
 
     if (parsed.type === "signal") {
+      if (parsed.signal.expiresAt && Date.now() > parsed.signal.expiresAt) {
+        return;
+      }
+
       if (parsed.signal.toPeerId !== this.identity.deviceId) {
         return;
       }

@@ -19,7 +19,12 @@ export interface DiscoveredPeer {
   lastSeenAt: number;
 }
 
-export type SignalKind = "ping" | "pong" | "pairing-intent" | "chat-text";
+export type SignalKind =
+  | "ping"
+  | "pong"
+  | "pairing-intent"
+  | "chat-text"
+  | "ack";
 
 export interface DiscoverySignal {
   id: string;
@@ -28,6 +33,20 @@ export interface DiscoverySignal {
   kind: SignalKind;
   payload: string | null;
   sentAt: number;
+  requiresAck?: boolean;
+  ackForId?: string | null;
+  ttlMs?: number;
+  expiresAt?: number;
+  attempt?: number;
+  maxAttempts?: number;
+}
+
+export interface DiscoveryReliabilityStats {
+  pending: number;
+  delivered: number;
+  failed: number;
+  duplicatesDropped: number;
+  acksReceived: number;
 }
 
 export interface DiscoveryStatus {
