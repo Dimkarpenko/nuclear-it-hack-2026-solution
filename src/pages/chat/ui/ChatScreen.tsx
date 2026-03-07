@@ -7,6 +7,15 @@ function formatMessageMeta(createdAt: number, status: string): string {
   return `${new Date(createdAt).toLocaleTimeString()} · ${status}`;
 }
 
+function formatPercent(transferredBytes: number, totalBytes: number): string {
+  if (totalBytes <= 0) {
+    return "0%";
+  }
+
+  const ratio = Math.min(1, Math.max(0, transferredBytes / totalBytes));
+  return `${Math.round(ratio * 100)}%`;
+}
+
 export function ChatScreen() {
   const {
     isReady,
@@ -16,15 +25,20 @@ export function ChatScreen() {
     chats,
     selectedChatId,
     messages,
+    transfers,
     draft,
     setDraft,
+    fileDraft,
+    setFileDraft,
     reliability,
     selectChat,
     refresh,
     sendMessage,
+    sendFile,
   } = useChatViewModel();
 
   const canSend = draft.trim().length > 0 && selectedChatId !== null;
+  const canSendFile = fileDraft.trim().length > 0 && selectedChatId !== null;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -152,6 +166,52 @@ export function ChatScreen() {
             <Text style={styles.sendButtonText}>Send</Text>
           </Pressable>
         </View>
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>File transfer</Text>
+        <TextInput
+          value={fileDraft}
+          onChangeText={setFileDraft}
+          style={styles.fileInput}
+          placeholder="Type file content for chunked send"
+          placeholderTextColor="#7e86a8"
+          editable={selectedChatId !== null}
+          multiline
+          numberOfLines={3}
+        />
+        <Pressable
+          style={[
+            styles.fileButton,
+            canSendFile ? null : styles.disabledSendButton,
+          ]}
+          onPress={() => sendFile().catch(() => undefined)}
+          disabled={!canSendFile}
+        >
+          <Text style={styles.fileButtonText}>Send file in chunks</Text>
+        </Pressable>
+
+        {transfers.length === 0 ? (
+          <Text style={styles.emptyText}>No transfers yet</Text>
+        ) : (
+          <View style={styles.transferList}>
+            {transfers.map((transfer) => (
+              <View key={transfer.id} style={styles.transferRow}>
+                <Text style={styles.transferName}>{transfer.fileName}</Text>
+                <Text style={styles.transferMeta}>
+                  {transfer.direction} · {transfer.status}
+                </Text>
+                <Text style={styles.transferMeta}>
+                  {transfer.transferredBytes}/{transfer.totalBytes} B ·{" "}
+                  {formatPercent(
+                    transfer.transferredBytes,
+                    transfer.totalBytes,
+                  )}
+                </Text>
+              </View>
+            ))}
+          </View>
+        )}
       </View>
     </ScrollView>
   );

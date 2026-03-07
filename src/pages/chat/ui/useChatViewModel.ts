@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { Chat, Message } from "@/entities/messenger";
+import { Chat, FileTransfer, Message } from "@/entities/messenger";
 import { getChatById, listChats, upsertChat } from "@/entities/chat";
 import {
   listMessagesByChat,
@@ -8,6 +8,11 @@ import {
   upsertMessage,
 } from "@/entities/message";
 import { listPeers } from "@/entities/peer";
+import {
+  listTransfersByChat,
+  updateTransferProgress,
+  upsertTransfer,
+} from "@/entities/transfer";
 import { getDiscoveryService } from "@/features/discovery";
 import {
   createPrivateChatId,
@@ -35,10 +40,70 @@ type PendingReliableMessage = {
   retryTimer: ReturnType<typeof setTimeout> | null;
 };
 
+type FileInitPayload = {
+  transferId: string;
+  messageId: string;
+  fileName: string;
+  mimeType: string;
+  totalBytes: number;
+  chunkSize: number;
+  totalChunks: number;
+};
+
+type FileChunkPayload = {
+  transferId: string;
+  index: number;
+  data: string;
+};
+
+type FileRequestNextPayload = {
+  transferId: string;
+  nextChunkIndex: number;
+};
+
+type FileCompletePayload = {
+  transferId: string;
+};
+
+type OutgoingFileSession = {
+  transferId: string;
+  messageId: string;
+  chatId: string;
+  peerId: string;
+  fileName: string;
+  mimeType: string;
+  totalBytes: number;
+  chunkSize: number;
+  totalChunks: number;
+  chunks: string[];
+  started: boolean;
+  initAttempt: number;
+  initRetryTimer: ReturnType<typeof setTimeout> | null;
+};
+
+type IncomingFileSession = {
+  transferId: string;
+  messageId: string;
+  chatId: string;
+  peerId: string;
+  fileName: string;
+  mimeType: string;
+  totalBytes: number;
+  chunkSize: number;
+  totalChunks: number;
+  nextChunkIndex: number;
+  receivedBytes: number;
+  requestRetryTimer: ReturnType<typeof setTimeout> | null;
+};
+
 const RELIABLE_TTL_MS = 15_000;
 const RETRY_DELAY_MS = 1_250;
 const MAX_ATTEMPTS = 5;
 const SEEN_TTL_MS = 60_000;
+const FILE_CHUNK_SIZE = 320;
+const FILE_REQUEST_RETRY_MS = 1_800;
+const FILE_INIT_RETRY_MS = 2_000;
+const FILE_INIT_MAX_ATTEMPTS = 5;
 
 function formatTitle(chat: Chat, peerNameById: Map<string, string>): string {
   if (chat.title && chat.title.trim().length > 0) {
@@ -57,10 +122,64 @@ function makeMessageId(): string {
   return `${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
 }
 
+function makeTransferId(): string {
+  return `transfer-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`;
+}
+
+function splitToChunks(value: string, chunkSize: number): string[] {
+  const chunks: string[] = [];
+  let offset = 0;
+
+  while (offset < value.length) {
+    chunks.push(value.slice(offset, offset + chunkSize));
+    offset += chunkSize;
+  }
+
+  if (chunks.length === 0) {
+    chunks.push("");
+  }
+
+  return chunks;
+}
+
+function parseSignalPayload<T>(payload: string | null): T | null {
+  if (!payload) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(payload) as T;
+  } catch {
+    return null;
+  }
+}
+
+function clampIndex(value: number, totalChunks: number): number {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  if (value < 0) {
+    return 0;
+  }
+
+  if (value >= totalChunks) {
+    return totalChunks;
+  }
+
+  return Math.floor(value);
+}
+
+function makeFileMessageBody(fileName: string, totalBytes: number): string {
+  return `File: ${fileName} (${totalBytes} B)`;
+}
+
 export function useChatViewModel() {
   const service = useMemo(() => getDiscoveryService(), []);
   const pendingRef = useRef<Map<string, PendingReliableMessage>>(new Map());
   const seenRef = useRef<Map<string, number>>(new Map());
+  const outgoingFileRef = useRef<Map<string, OutgoingFileSession>>(new Map());
+  const incomingFileRef = useRef<Map<string, IncomingFileSession>>(new Map());
 
   const [isReady, setIsReady] = useState(false);
   const [statusText, setStatusText] = useState("disconnected");
@@ -69,7 +188,9 @@ export function useChatViewModel() {
   const [chats, setChats] = useState<ChatListItem[]>([]);
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [transfers, setTransfers] = useState<FileTransfer[]>([]);
   const [draft, setDraft] = useState("");
+  const [fileDraft, setFileDraft] = useState("");
   const [reliability, setReliability] = useState<ChatReliabilityStats>({
     pending: 0,
     delivered: 0,
@@ -128,6 +249,11 @@ export function useChatViewModel() {
     setMessages([...dbMessages].reverse());
   }, []);
 
+  const loadTransfers = useCallback(async (chatId: string) => {
+    const dbTransfers = await listTransfersByChat(chatId);
+    setTransfers(dbTransfers);
+  }, []);
+
   const refreshAll = useCallback(async () => {
     await loadChats();
   }, [loadChats]);
@@ -135,11 +261,26 @@ export function useChatViewModel() {
   useEffect(() => {
     if (!selectedChatId) {
       setMessages([]);
+      setTransfers([]);
       return;
     }
 
-    loadMessages(selectedChatId).catch(() => undefined);
-  }, [selectedChatId, loadMessages]);
+    Promise.all([
+      loadMessages(selectedChatId),
+      loadTransfers(selectedChatId),
+    ]).catch(() => undefined);
+  }, [selectedChatId, loadMessages, loadTransfers]);
+
+  const refreshChatData = useCallback(
+    async (chatId: string) => {
+      if (selectedChatId !== chatId) {
+        return;
+      }
+
+      await Promise.all([loadMessages(chatId), loadTransfers(chatId)]);
+    },
+    [selectedChatId, loadMessages, loadTransfers],
+  );
 
   const ensureChatForPeer = useCallback(
     async (peerId: string, peerNameHint?: string) => {
@@ -190,6 +331,136 @@ export function useChatViewModel() {
       }
     });
   };
+
+  const clearOutgoingInitTimer = (transferId: string) => {
+    const session = outgoingFileRef.current.get(transferId);
+    if (!session || !session.initRetryTimer) {
+      return;
+    }
+
+    clearTimeout(session.initRetryTimer);
+    session.initRetryTimer = null;
+  };
+
+  const clearIncomingRequestTimer = (transferId: string) => {
+    const session = incomingFileRef.current.get(transferId);
+    if (!session || !session.requestRetryTimer) {
+      return;
+    }
+
+    clearTimeout(session.requestRetryTimer);
+    session.requestRetryTimer = null;
+  };
+
+  const sendFileInit = useCallback(
+    async (transferId: string) => {
+      const session = outgoingFileRef.current.get(transferId);
+      if (!session) {
+        return;
+      }
+
+      const payload: FileInitPayload = {
+        transferId: session.transferId,
+        messageId: session.messageId,
+        fileName: session.fileName,
+        mimeType: session.mimeType,
+        totalBytes: session.totalBytes,
+        chunkSize: session.chunkSize,
+        totalChunks: session.totalChunks,
+      };
+
+      service.sendSignal(session.peerId, "file-init", JSON.stringify(payload));
+    },
+    [service],
+  );
+
+  const markFileTransferFailed = useCallback(
+    async (transferId: string) => {
+      const session = outgoingFileRef.current.get(transferId);
+      if (!session) {
+        return;
+      }
+
+      clearOutgoingInitTimer(transferId);
+      outgoingFileRef.current.delete(transferId);
+
+      const now = Date.now();
+      await Promise.all([
+        updateTransferProgress(transferId, 0, "failed", now),
+        updateMessageStatus(session.messageId, "failed", now, null),
+      ]);
+
+      await refreshChatData(session.chatId);
+    },
+    [refreshChatData],
+  );
+
+  const scheduleFileInitRetry = useCallback(
+    (transferId: string) => {
+      const session = outgoingFileRef.current.get(transferId);
+      if (!session || session.started) {
+        return;
+      }
+
+      clearOutgoingInitTimer(transferId);
+      session.initRetryTimer = setTimeout(() => {
+        const current = outgoingFileRef.current.get(transferId);
+        if (!current || current.started) {
+          return;
+        }
+
+        if (current.initAttempt >= FILE_INIT_MAX_ATTEMPTS) {
+          markFileTransferFailed(transferId).catch(() => undefined);
+          return;
+        }
+
+        current.initAttempt += 1;
+        sendFileInit(transferId)
+          .catch(() => undefined)
+          .finally(() => {
+            scheduleFileInitRetry(transferId);
+          });
+      }, FILE_INIT_RETRY_MS);
+    },
+    [markFileTransferFailed, sendFileInit],
+  );
+
+  const sendNextChunkRequest = useCallback(
+    (session: IncomingFileSession) => {
+      const payload: FileRequestNextPayload = {
+        transferId: session.transferId,
+        nextChunkIndex: session.nextChunkIndex,
+      };
+
+      service.sendSignal(
+        session.peerId,
+        "file-request-next",
+        JSON.stringify(payload),
+      );
+    },
+    [service],
+  );
+
+  const scheduleChunkRequestRetry = useCallback(
+    (transferId: string) => {
+      const session = incomingFileRef.current.get(transferId);
+      if (!session) {
+        return;
+      }
+
+      clearIncomingRequestTimer(transferId);
+      session.requestRetryTimer = setTimeout(() => {
+        const current = incomingFileRef.current.get(transferId);
+        if (!current) {
+          return;
+        }
+
+        sendNextChunkRequest(current);
+        scheduleChunkRequestRetry(transferId);
+      }, FILE_REQUEST_RETRY_MS);
+    },
+    [sendNextChunkRequest],
+  );
 
   const markDeliveryFailed = useCallback(
     async (messageId: string, chatId: string) => {
@@ -378,6 +649,255 @@ export function useChatViewModel() {
     ],
   );
 
+  const handleIncomingFileInit = useCallback(
+    async (
+      fromPeerId: string,
+      payload: string | null,
+      signalSentAt: number,
+    ) => {
+      if (!localPeerId) {
+        return;
+      }
+
+      const meta = parseSignalPayload<FileInitPayload>(payload);
+      if (!meta) {
+        return;
+      }
+
+      const chat = await ensureChatForPeer(fromPeerId);
+      if (!chat) {
+        return;
+      }
+
+      const now = Date.now();
+      const message: Message = {
+        id: meta.messageId,
+        chatId: chat.id,
+        senderPeerId: fromPeerId,
+        targetPeerId: localPeerId,
+        kind: "file",
+        body: makeFileMessageBody(meta.fileName, meta.totalBytes),
+        ttlMs: RELIABLE_TTL_MS,
+        dedupeKey: meta.messageId,
+        status: "delivered",
+        createdAt: signalSentAt || now,
+        updatedAt: now,
+        deliveredAt: now,
+      };
+
+      await upsertMessage(message);
+
+      const existing = incomingFileRef.current.get(meta.transferId);
+      const session: IncomingFileSession = existing ?? {
+        transferId: meta.transferId,
+        messageId: meta.messageId,
+        chatId: chat.id,
+        peerId: fromPeerId,
+        fileName: meta.fileName,
+        mimeType: meta.mimeType,
+        totalBytes: meta.totalBytes,
+        chunkSize: meta.chunkSize,
+        totalChunks: meta.totalChunks,
+        nextChunkIndex: 0,
+        receivedBytes: 0,
+        requestRetryTimer: null,
+      };
+
+      incomingFileRef.current.set(meta.transferId, session);
+
+      const transfer: FileTransfer = {
+        id: meta.transferId,
+        messageId: meta.messageId,
+        chatId: chat.id,
+        direction: "download",
+        fileName: meta.fileName,
+        mimeType: meta.mimeType,
+        totalBytes: meta.totalBytes,
+        transferredBytes: session.receivedBytes,
+        chunkSize: meta.chunkSize,
+        status:
+          session.receivedBytes >= meta.totalBytes ? "completed" : "active",
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      await upsertTransfer(transfer);
+      await loadChats();
+      await refreshChatData(chat.id);
+
+      sendNextChunkRequest(session);
+      scheduleChunkRequestRetry(session.transferId);
+    },
+    [
+      localPeerId,
+      ensureChatForPeer,
+      loadChats,
+      refreshChatData,
+      sendNextChunkRequest,
+      scheduleChunkRequestRetry,
+    ],
+  );
+
+  const handleIncomingFileChunk = useCallback(
+    async (fromPeerId: string, payload: string | null) => {
+      const data = parseSignalPayload<FileChunkPayload>(payload);
+      if (!data) {
+        return;
+      }
+
+      const session = incomingFileRef.current.get(data.transferId);
+      if (!session) {
+        return;
+      }
+
+      if (session.peerId !== fromPeerId) {
+        return;
+      }
+
+      if (data.index !== session.nextChunkIndex) {
+        sendNextChunkRequest(session);
+        scheduleChunkRequestRetry(session.transferId);
+        return;
+      }
+
+      clearIncomingRequestTimer(session.transferId);
+
+      session.nextChunkIndex += 1;
+      session.receivedBytes = Math.min(
+        session.totalBytes,
+        session.receivedBytes + data.data.length,
+      );
+
+      const now = Date.now();
+
+      if (
+        session.nextChunkIndex >= session.totalChunks ||
+        session.receivedBytes >= session.totalBytes
+      ) {
+        await updateTransferProgress(
+          session.transferId,
+          session.totalBytes,
+          "completed",
+          now,
+        );
+
+        incomingFileRef.current.delete(session.transferId);
+
+        service.sendSignal(
+          session.peerId,
+          "file-complete",
+          JSON.stringify({
+            transferId: session.transferId,
+          } satisfies FileCompletePayload),
+        );
+
+        await refreshChatData(session.chatId);
+        return;
+      }
+
+      await updateTransferProgress(
+        session.transferId,
+        session.receivedBytes,
+        "active",
+        now,
+      );
+
+      await refreshChatData(session.chatId);
+
+      sendNextChunkRequest(session);
+      scheduleChunkRequestRetry(session.transferId);
+    },
+    [refreshChatData, scheduleChunkRequestRetry, sendNextChunkRequest, service],
+  );
+
+  const handleFileRequestNext = useCallback(
+    async (payload: string | null) => {
+      const request = parseSignalPayload<FileRequestNextPayload>(payload);
+      if (!request) {
+        return;
+      }
+
+      const session = outgoingFileRef.current.get(request.transferId);
+      if (!session) {
+        return;
+      }
+
+      if (!session.started) {
+        session.started = true;
+        clearOutgoingInitTimer(session.transferId);
+      }
+
+      const nextIndex = clampIndex(request.nextChunkIndex, session.totalChunks);
+
+      if (nextIndex >= session.totalChunks) {
+        service.sendSignal(
+          session.peerId,
+          "file-complete",
+          JSON.stringify({
+            transferId: session.transferId,
+          } satisfies FileCompletePayload),
+        );
+        return;
+      }
+
+      const chunk = session.chunks[nextIndex] ?? "";
+
+      service.sendSignal(
+        session.peerId,
+        "file-chunk",
+        JSON.stringify({
+          transferId: session.transferId,
+          index: nextIndex,
+          data: chunk,
+        } satisfies FileChunkPayload),
+      );
+
+      const confirmedBytes = Math.min(
+        session.totalBytes,
+        Math.max(0, nextIndex * session.chunkSize),
+      );
+      await updateTransferProgress(
+        session.transferId,
+        confirmedBytes,
+        "active",
+        Date.now(),
+      );
+      await refreshChatData(session.chatId);
+    },
+    [refreshChatData, service],
+  );
+
+  const handleFileComplete = useCallback(
+    async (payload: string | null) => {
+      const complete = parseSignalPayload<FileCompletePayload>(payload);
+      if (!complete) {
+        return;
+      }
+
+      const session = outgoingFileRef.current.get(complete.transferId);
+      if (!session) {
+        return;
+      }
+
+      clearOutgoingInitTimer(session.transferId);
+      outgoingFileRef.current.delete(session.transferId);
+
+      const now = Date.now();
+      await Promise.all([
+        updateTransferProgress(
+          session.transferId,
+          session.totalBytes,
+          "completed",
+          now,
+        ),
+        updateMessageStatus(session.messageId, "delivered", now, now),
+      ]);
+
+      await refreshChatData(session.chatId);
+    },
+    [refreshChatData],
+  );
+
   useEffect(() => {
     let mounted = true;
 
@@ -441,6 +961,32 @@ export function useChatViewModel() {
           signal.ttlMs,
           signal.requiresAck,
         ).catch(() => undefined);
+        return;
+      }
+
+      if (signal.kind === "file-init") {
+        handleIncomingFileInit(
+          signal.fromPeerId,
+          signal.payload,
+          signal.sentAt,
+        ).catch(() => undefined);
+        return;
+      }
+
+      if (signal.kind === "file-chunk") {
+        handleIncomingFileChunk(signal.fromPeerId, signal.payload).catch(
+          () => undefined,
+        );
+        return;
+      }
+
+      if (signal.kind === "file-request-next") {
+        handleFileRequestNext(signal.payload).catch(() => undefined);
+        return;
+      }
+
+      if (signal.kind === "file-complete") {
+        handleFileComplete(signal.payload).catch(() => undefined);
       }
     });
 
@@ -454,8 +1000,31 @@ export function useChatViewModel() {
         }
       });
       pendingRef.current.clear();
+
+      outgoingFileRef.current.forEach((session) => {
+        if (session.initRetryTimer) {
+          clearTimeout(session.initRetryTimer);
+        }
+      });
+      outgoingFileRef.current.clear();
+
+      incomingFileRef.current.forEach((session) => {
+        if (session.requestRetryTimer) {
+          clearTimeout(session.requestRetryTimer);
+        }
+      });
+      incomingFileRef.current.clear();
     };
-  }, [service, handleAck, handleIncomingChat, refreshAll]);
+  }, [
+    service,
+    handleAck,
+    handleIncomingChat,
+    handleIncomingFileInit,
+    handleIncomingFileChunk,
+    handleFileRequestNext,
+    handleFileComplete,
+    refreshAll,
+  ]);
 
   const selectChat = (chatId: string) => {
     setSelectedChatId(chatId);
@@ -464,8 +1033,95 @@ export function useChatViewModel() {
   const refresh = async () => {
     await refreshAll();
     if (selectedChatId) {
-      await loadMessages(selectedChatId);
+      await Promise.all([
+        loadMessages(selectedChatId),
+        loadTransfers(selectedChatId),
+      ]);
     }
+  };
+
+  const sendFile = async () => {
+    if (!selectedChatId || !localPeerId) {
+      return;
+    }
+
+    const content = fileDraft.trim();
+    if (!content) {
+      return;
+    }
+
+    const chat = chats.find((item) => item.id === selectedChatId);
+    if (!chat) {
+      return;
+    }
+
+    const now = Date.now();
+    const messageId = makeMessageId();
+    const transferId = makeTransferId();
+    const fileName = `note-${now}.txt`;
+    const mimeType = "text/plain";
+    const chunkSize = FILE_CHUNK_SIZE;
+    const chunks = splitToChunks(content, chunkSize);
+    const totalChunks = chunks.length;
+    const totalBytes = content.length;
+
+    const message: Message = {
+      id: messageId,
+      chatId: chat.id,
+      senderPeerId: localPeerId,
+      targetPeerId: chat.participantPeerId,
+      kind: "file",
+      body: makeFileMessageBody(fileName, totalBytes),
+      ttlMs: RELIABLE_TTL_MS,
+      dedupeKey: messageId,
+      status: "sent",
+      createdAt: now,
+      updatedAt: now,
+      deliveredAt: null,
+    };
+
+    const transfer: FileTransfer = {
+      id: transferId,
+      messageId,
+      chatId: chat.id,
+      direction: "upload",
+      fileName,
+      mimeType,
+      totalBytes,
+      transferredBytes: 0,
+      chunkSize,
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await Promise.all([upsertMessage(message), upsertTransfer(transfer)]);
+
+    const session: OutgoingFileSession = {
+      transferId,
+      messageId,
+      chatId: chat.id,
+      peerId: chat.participantPeerId,
+      fileName,
+      mimeType,
+      totalBytes,
+      chunkSize,
+      totalChunks,
+      chunks,
+      started: false,
+      initAttempt: 1,
+      initRetryTimer: null,
+    };
+
+    outgoingFileRef.current.set(transferId, session);
+
+    setFileDraft("");
+
+    await loadChats();
+    await refreshChatData(chat.id);
+
+    await sendFileInit(transferId);
+    scheduleFileInitRetry(transferId);
   };
 
   const sendMessage = async () => {
@@ -549,11 +1205,15 @@ export function useChatViewModel() {
     chats,
     selectedChatId,
     messages,
+    transfers,
     draft,
     setDraft,
+    fileDraft,
+    setFileDraft,
     reliability,
     selectChat,
     refresh,
     sendMessage,
+    sendFile,
   };
 }

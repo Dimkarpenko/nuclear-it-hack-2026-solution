@@ -154,4 +154,49 @@ export const styles = StyleSheet.create({
   disabledSendButton: {
     opacity: 0.5,
   },
+  fileInput: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#2b3154",
+    backgroundColor: "#0f1530",
+    color: "#f2f5ff",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    minHeight: 84,
+    textAlignVertical: "top",
+  },
+  fileButton: {
+    borderRadius: 10,
+    backgroundColor: "#8ad36b",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  fileButtonText: {
+    color: "#09210d",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  transferList: {
+    gap: 8,
+  },
+  transferRow: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#2b3154",
+    backgroundColor: "#0f1530",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 2,
+  },
+  transferName: {
+    color: "#f2f5ff",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  transferMeta: {
+    color: "#9ba6cd",
+    fontSize: 12,
+  },
 });

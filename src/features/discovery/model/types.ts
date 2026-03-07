@@ -24,6 +24,10 @@ export type SignalKind =
   | "pong"
   | "pairing-intent"
   | "chat-text"
+  | "file-init"
+  | "file-chunk"
+  | "file-request-next"
+  | "file-complete"
   | "ack";
 
 export interface DiscoverySignal {
