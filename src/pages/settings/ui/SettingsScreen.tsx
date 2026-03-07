@@ -10,7 +10,11 @@ import { getStorageStats } from "@/shared/lib/storage";
 
 import { styles } from "./SettingsScreen.styles";
 
-export function SettingsScreen() {
+type SettingsScreenProps = {
+  onBack?: () => void;
+};
+
+export function SettingsScreen({ onBack }: SettingsScreenProps) {
   const service = useMemo(() => getDiscoveryService(), []);
   const insets = useSafeAreaInsets();
   const [deviceId, setDeviceId] = useState("-");
@@ -68,11 +72,19 @@ export function SettingsScreen() {
         },
       ]}
     >
-      <View>
-        <Text style={styles.title}>Настройки</Text>
-        <Text style={styles.subtitle}>
-          Техническое состояние и диагностика.
-        </Text>
+      <View style={styles.headerWrap}>
+        {onBack ? (
+          <Pressable style={styles.backButton} onPress={onBack}>
+            <Text style={styles.backButtonText}>{"<"}</Text>
+          </Pressable>
+        ) : null}
+
+        <View style={styles.headerTextWrap}>
+          <Text style={styles.title}>Настройки</Text>
+          <Text style={styles.subtitle}>
+            Техническое состояние и диагностика.
+          </Text>
+        </View>
       </View>
 
       <View style={styles.card}>

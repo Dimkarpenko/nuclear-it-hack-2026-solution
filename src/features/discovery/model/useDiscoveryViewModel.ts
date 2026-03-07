@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { getOrCreateDeviceIdentity } from "@/features/security";
+import { getChatById, upsertChat } from "@/entities/chat";
+import { Chat, Peer } from "@/entities/messenger";
+import { getPeerById, upsertPeer } from "@/entities/peer";
+import {
+  createPrivateChatId,
+  getOrCreateDeviceIdentity,
+} from "@/features/security";
 
 import { getDiscoveryService } from "./discoveryService";
 import { detectRelayUrl } from "./relayAutoDiscovery";
@@ -261,6 +267,55 @@ export function useDiscoveryViewModel() {
     }
   };
 
+  const ensureChatForIncomingPairingIntent = async (
+    fromPeerId: string,
+    payload: string | null,
+  ) => {
+    const identity = await getOrCreateDeviceIdentity();
+    const now = Date.now();
+    const chatId = await createPrivateChatId(identity.deviceId, fromPeerId);
+    const peerFromNetwork =
+      service.getPeers().find((peer) => peer.peerId === fromPeerId) ?? null;
+    const payloadName = (payload ?? "").trim();
+    const displayName =
+      peerFromNetwork?.displayName ??
+      (payloadName.length > 0 ? payloadName : "Peer");
+
+    const existingPeer = await getPeerById(fromPeerId);
+    const peer: Peer = {
+      id: fromPeerId,
+      displayName,
+      publicKey: peerFromNetwork?.publicKey ?? existingPeer?.publicKey ?? "",
+      trustLevel: existingPeer?.trustLevel ?? 0,
+      isBlocked: existingPeer?.isBlocked ?? false,
+      lastSeenAt: now,
+      createdAt: existingPeer?.createdAt ?? now,
+      updatedAt: now,
+    };
+
+    await upsertPeer(peer);
+
+    const existingChat = await getChatById(chatId);
+    const chat: Chat = existingChat
+      ? {
+          ...existingChat,
+          title: existingChat.title ?? displayName,
+          updatedAt: now,
+          lastMessageAt: existingChat.lastMessageAt ?? now,
+        }
+      : {
+          id: chatId,
+          type: "private",
+          participantPeerId: fromPeerId,
+          title: displayName,
+          createdAt: now,
+          updatedAt: now,
+          lastMessageAt: now,
+        };
+
+    await upsertChat(chat);
+  };
+
   useEffect(() => {
     let mounted = true;
 
@@ -320,6 +375,15 @@ export function useDiscoveryViewModel() {
 
       if (signal.kind === "ping") {
         service.sendSignal(signal.fromPeerId, "pong", "ack");
+      }
+
+      if (signal.kind === "pairing-intent") {
+        ensureChatForIncomingPairingIntent(signal.fromPeerId, signal.payload)
+          .then(() => {
+            appendLog(`IN START CHAT ${signal.fromPeerId.slice(0, 8)}`);
+          })
+          .catch(() => undefined);
+        return;
       }
 
       if (signal.kind === "chat-text") {
@@ -399,6 +463,11 @@ export function useDiscoveryViewModel() {
     sendReliableChatText(peerId, text);
   };
 
+  const sendPairingIntent = (peerId: string, displayName?: string) => {
+    service.sendSignal(peerId, "pairing-intent", displayName ?? null);
+    appendLog(`OUT START CHAT ${peerId.slice(0, 8)}`);
+  };
+
   return {
     status,
     relayUrlInput,
@@ -413,5 +482,6 @@ export function useDiscoveryViewModel() {
     useBrowserLocalTransport,
     sendPing,
     sendChatText,
+    sendPairingIntent,
   };
 }

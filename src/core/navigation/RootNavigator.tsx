@@ -5,7 +5,13 @@ import { MainScreen } from "@/pages/main";
 import { PairingScreen } from "@/pages/pairing";
 
 export type RootStackParamList = {
-  Main: undefined;
+  Main:
+    | {
+        openPeerId?: string;
+        openPeerName?: string;
+        openAt?: number;
+      }
+    | undefined;
   Pairing: undefined;
   Discovery: undefined;
 };

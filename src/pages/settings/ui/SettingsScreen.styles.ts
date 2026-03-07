@@ -11,6 +11,29 @@ export const styles = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 112,
   },
+  headerWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  headerTextWrap: {
+    flex: 1,
+  },
+  backButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#2b3154",
+    backgroundColor: "#101326",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  backButtonText: {
+    color: "#e8eeff",
+    fontSize: 14,
+    fontWeight: "700",
+  },
   title: {
     fontSize: 28,
     fontWeight: "800",

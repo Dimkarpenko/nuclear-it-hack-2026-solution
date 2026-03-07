@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system/legacy";
 
 import { Chat, FileTransfer, Message, Peer } from "@/entities/messenger";
 import { getChatById, listChats, upsertChat } from "@/entities/chat";
@@ -107,6 +109,7 @@ const FILE_INIT_MAX_ATTEMPTS = 5;
 const FAVORITES_PEER_ID = "favorites-peer";
 const FAVORITES_CHAT_ID = "favorites-chat";
 const FAVORITES_TITLE = "Избранное";
+const VOICE_INVITE_TEXT = "Голосовой чат: приглашение";
 
 function formatTitle(chat: Chat, peerNameById: Map<string, string>): string {
   if (chat.id === FAVORITES_CHAT_ID) {
@@ -181,6 +184,14 @@ function makeFileMessageBody(fileName: string, totalBytes: number): string {
   return `File: ${fileName} (${totalBytes} B)`;
 }
 
+function makeVoiceMessageBody(peerName: string | null | undefined): string {
+  if (peerName && peerName.trim().length > 0) {
+    return `Голосовой чат: приглашение для ${peerName}`;
+  }
+
+  return VOICE_INVITE_TEXT;
+}
+
 export function useChatViewModel() {
   const service = useMemo(() => getDiscoveryService(), []);
   const pendingRef = useRef<Map<string, PendingReliableMessage>>(new Map());
@@ -197,7 +208,6 @@ export function useChatViewModel() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [transfers, setTransfers] = useState<FileTransfer[]>([]);
   const [draft, setDraft] = useState("");
-  const [fileDraft, setFileDraft] = useState("");
   const [reliability, setReliability] = useState<ChatReliabilityStats>({
     pending: 0,
     delivered: 0,
@@ -222,6 +232,35 @@ export function useChatViewModel() {
     clearTimeout(entry.retryTimer);
     entry.retryTimer = null;
   };
+
+  const appendSystemMessage = useCallback(
+    async (
+      chatId: string,
+      senderPeerId: string,
+      targetPeerId: string,
+      body: string,
+      status: "sent" | "delivered",
+    ) => {
+      const now = Date.now();
+      const message: Message = {
+        id: makeMessageId(),
+        chatId,
+        senderPeerId,
+        targetPeerId,
+        kind: "system",
+        body,
+        ttlMs: RELIABLE_TTL_MS,
+        dedupeKey: makeMessageId(),
+        status,
+        createdAt: now,
+        updatedAt: now,
+        deliveredAt: status === "delivered" ? now : null,
+      };
+
+      await upsertMessage(message);
+    },
+    [],
+  );
 
   const ensureFavoritesChat = useCallback(async () => {
     if (!localPeerId) {
@@ -373,7 +412,7 @@ export function useChatViewModel() {
           title: peerNameHint ?? null,
           createdAt: now,
           updatedAt: now,
-          lastMessageAt: null,
+          lastMessageAt: now,
         };
         await upsertChat(created);
         await loadChats();
@@ -721,6 +760,73 @@ export function useChatViewModel() {
     ],
   );
 
+  const handleIncomingVoiceIntent = useCallback(
+    async (fromPeerId: string) => {
+      if (!localPeerId) {
+        return;
+      }
+
+      const peerNameHint =
+        service.getPeers().find((peer) => peer.peerId === fromPeerId)
+          ?.displayName ?? null;
+
+      const chat = await ensureChatForPeer(
+        fromPeerId,
+        peerNameHint ?? undefined,
+      );
+      if (!chat) {
+        return;
+      }
+
+      await appendSystemMessage(
+        chat.id,
+        fromPeerId,
+        localPeerId,
+        makeVoiceMessageBody(peerNameHint),
+        "delivered",
+      );
+
+      await loadChats();
+
+      if (selectedChatId === chat.id) {
+        await loadMessages(chat.id);
+      }
+    },
+    [
+      appendSystemMessage,
+      ensureChatForPeer,
+      loadChats,
+      loadMessages,
+      localPeerId,
+      selectedChatId,
+      service,
+    ],
+  );
+
+  const handleIncomingPairingIntent = useCallback(
+    async (fromPeerId: string, payload: string | null) => {
+      if (!localPeerId) {
+        return;
+      }
+
+      const payloadName = (payload ?? "").trim();
+      const peerNameHint =
+        service.getPeers().find((peer) => peer.peerId === fromPeerId)
+          ?.displayName ?? (payloadName.length > 0 ? payloadName : null);
+
+      const chat = await ensureChatForPeer(
+        fromPeerId,
+        peerNameHint ?? undefined,
+      );
+      if (!chat) {
+        return;
+      }
+
+      await loadChats();
+    },
+    [ensureChatForPeer, loadChats, localPeerId, service],
+  );
+
   const handleIncomingFileInit = useCallback(
     async (
       fromPeerId: string,
@@ -1036,6 +1142,18 @@ export function useChatViewModel() {
         return;
       }
 
+      if (signal.kind === "voice-intent") {
+        handleIncomingVoiceIntent(signal.fromPeerId).catch(() => undefined);
+        return;
+      }
+
+      if (signal.kind === "pairing-intent") {
+        handleIncomingPairingIntent(signal.fromPeerId, signal.payload).catch(
+          () => undefined,
+        );
+        return;
+      }
+
       if (signal.kind === "file-init") {
         handleIncomingFileInit(
           signal.fromPeerId,
@@ -1091,6 +1209,8 @@ export function useChatViewModel() {
     service,
     handleAck,
     handleIncomingChat,
+    handleIncomingVoiceIntent,
+    handleIncomingPairingIntent,
     handleIncomingFileInit,
     handleIncomingFileChunk,
     handleFileRequestNext,
@@ -1104,6 +1224,25 @@ export function useChatViewModel() {
 
   const closeChat = () => {
     setSelectedChatId(null);
+  };
+
+  const startChatWithPeer = async (peerId: string, peerNameHint?: string) => {
+    const chat = await ensureChatForPeer(peerId, peerNameHint);
+    if (!chat) {
+      return false;
+    }
+
+    if (localPeerId && chat.participantPeerId !== localPeerId) {
+      service.sendSignal(
+        chat.participantPeerId,
+        "pairing-intent",
+        (peerNameHint ?? "").trim() || null,
+      );
+    }
+
+    setSelectedChatId(chat.id);
+    await Promise.all([loadMessages(chat.id), loadTransfers(chat.id)]);
+    return true;
   };
 
   const refresh = async () => {
@@ -1121,39 +1260,59 @@ export function useChatViewModel() {
       return;
     }
 
-    const content = fileDraft.trim();
-    if (!content) {
+    const chat = chats.find((item) => item.id === selectedChatId);
+    if (!chat) {
       return;
     }
 
-    const chat = chats.find((item) => item.id === selectedChatId);
-    if (!chat) {
+    const picked = await DocumentPicker.getDocumentAsync({
+      type: "*/*",
+      multiple: false,
+      copyToCacheDirectory: true,
+    });
+
+    if (picked.canceled || picked.assets.length === 0) {
+      return;
+    }
+
+    const asset = picked.assets[0];
+    const fileName = asset.name || `file-${Date.now()}`;
+    const mimeType = asset.mimeType || "application/octet-stream";
+
+    const content = await FileSystem.readAsStringAsync(asset.uri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+
+    if (!content) {
       return;
     }
 
     const now = Date.now();
     const messageId = makeMessageId();
     const transferId = makeTransferId();
-    const fileName = `note-${now}.txt`;
-    const mimeType = "text/plain";
     const chunkSize = FILE_CHUNK_SIZE;
     const chunks = splitToChunks(content, chunkSize);
     const totalChunks = chunks.length;
-    const totalBytes = content.length;
+    const encodedBytes = content.length;
+    const displayBytes =
+      typeof asset.size === "number" && asset.size > 0
+        ? asset.size
+        : encodedBytes;
+    const isFavorites = chat.id === FAVORITES_CHAT_ID;
 
     const message: Message = {
       id: messageId,
       chatId: chat.id,
       senderPeerId: localPeerId,
-      targetPeerId: chat.participantPeerId,
+      targetPeerId: isFavorites ? localPeerId : chat.participantPeerId,
       kind: "file",
-      body: makeFileMessageBody(fileName, totalBytes),
+      body: makeFileMessageBody(fileName, displayBytes),
       ttlMs: RELIABLE_TTL_MS,
       dedupeKey: messageId,
-      status: "sent",
+      status: isFavorites ? "delivered" : "sent",
       createdAt: now,
       updatedAt: now,
-      deliveredAt: null,
+      deliveredAt: isFavorites ? now : null,
     };
 
     const transfer: FileTransfer = {
@@ -1163,15 +1322,21 @@ export function useChatViewModel() {
       direction: "upload",
       fileName,
       mimeType,
-      totalBytes,
-      transferredBytes: 0,
+      totalBytes: encodedBytes,
+      transferredBytes: isFavorites ? encodedBytes : 0,
       chunkSize,
-      status: "active",
+      status: isFavorites ? "completed" : "active",
       createdAt: now,
       updatedAt: now,
     };
 
     await Promise.all([upsertMessage(message), upsertTransfer(transfer)]);
+    await loadChats();
+    await refreshChatData(chat.id);
+
+    if (isFavorites) {
+      return;
+    }
 
     const session: OutgoingFileSession = {
       transferId,
@@ -1180,7 +1345,7 @@ export function useChatViewModel() {
       peerId: chat.participantPeerId,
       fileName,
       mimeType,
-      totalBytes,
+      totalBytes: encodedBytes,
       chunkSize,
       totalChunks,
       chunks,
@@ -1190,14 +1355,42 @@ export function useChatViewModel() {
     };
 
     outgoingFileRef.current.set(transferId, session);
-
-    setFileDraft("");
-
-    await loadChats();
-    await refreshChatData(chat.id);
-
     await sendFileInit(transferId);
     scheduleFileInitRetry(transferId);
+  };
+
+  const sendVoiceInvite = async () => {
+    if (!selectedChatId || !localPeerId) {
+      return;
+    }
+
+    const chat = chats.find((item) => item.id === selectedChatId);
+    if (!chat) {
+      return;
+    }
+
+    const isFavorites = chat.id === FAVORITES_CHAT_ID;
+
+    await appendSystemMessage(
+      chat.id,
+      localPeerId,
+      isFavorites ? localPeerId : chat.participantPeerId,
+      makeVoiceMessageBody(chat.resolvedTitle),
+      isFavorites ? "delivered" : "sent",
+    );
+
+    await loadChats();
+    await loadMessages(chat.id);
+
+    if (isFavorites) {
+      return;
+    }
+
+    service.sendSignal(
+      chat.participantPeerId,
+      "voice-intent",
+      VOICE_INVITE_TEXT,
+    );
   };
 
   const sendMessage = async () => {
@@ -1289,13 +1482,13 @@ export function useChatViewModel() {
     transfers,
     draft,
     setDraft,
-    fileDraft,
-    setFileDraft,
     reliability,
     selectChat,
     closeChat,
+    startChatWithPeer,
     refresh,
     sendMessage,
     sendFile,
+    sendVoiceInvite,
   };
 }

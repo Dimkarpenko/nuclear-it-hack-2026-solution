@@ -24,6 +24,7 @@ export type SignalKind =
   | "pong"
   | "pairing-intent"
   | "chat-text"
+  | "voice-intent"
   | "file-init"
   | "file-chunk"
   | "file-request-next"
