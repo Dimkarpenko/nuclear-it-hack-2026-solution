@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { getOrCreateDeviceIdentity } from "@/features/security";
 
 import { getDiscoveryService } from "./discoveryService";
+import { detectRelayUrl } from "./relayAutoDiscovery";
 import {
   DiscoveredPeer,
   DiscoveryLogEntry,
@@ -32,8 +33,22 @@ export function useDiscoveryViewModel() {
   const [peers, setPeers] = useState<DiscoveredPeer[]>([]);
   const [logs, setLogs] = useState<DiscoveryLogEntry[]>([]);
   const [relayUrlInput, setRelayUrlInput] = useState("");
+  const [isAutoDetectingRelay, setIsAutoDetectingRelay] = useState(false);
 
   const service = useMemo(() => getDiscoveryService(), []);
+
+  const appendLog = (text: string) => {
+    setLogs((prev) =>
+      [
+        {
+          id: `${Date.now()}-${Math.random()}`,
+          timestamp: Date.now(),
+          text,
+        },
+        ...prev,
+      ].slice(0, 40),
+    );
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -84,6 +99,14 @@ export function useDiscoveryViewModel() {
     };
   }, [service]);
 
+  useEffect(() => {
+    if (status.relayUrl || isAutoDetectingRelay) {
+      return;
+    }
+
+    autoDetectRelay().catch(() => undefined);
+  }, [status.relayUrl]);
+
   const refreshNow = async () => {
     const identity = await getOrCreateDeviceIdentity();
     service.start(identity);
@@ -96,6 +119,7 @@ export function useDiscoveryViewModel() {
     service.setRelayUrl(relayUrlInput);
     service.start(identity);
     setStatus(service.getStatus());
+    appendLog(`RELAY SET ${relayUrlInput.trim() || "none"}`);
   };
 
   const useBrowserLocalTransport = async () => {
@@ -104,6 +128,33 @@ export function useDiscoveryViewModel() {
     setRelayUrlInput("");
     service.start(identity);
     setStatus(service.getStatus());
+    appendLog("RELAY SET browser-local");
+  };
+
+  const autoDetectRelay = async () => {
+    if (isAutoDetectingRelay) {
+      return;
+    }
+
+    setIsAutoDetectingRelay(true);
+    try {
+      const relayUrl = await detectRelayUrl(
+        service.getRelayUrl() ?? relayUrlInput,
+      );
+      if (!relayUrl) {
+        appendLog("AUTO RELAY not found");
+        return;
+      }
+
+      const identity = await getOrCreateDeviceIdentity();
+      setRelayUrlInput(relayUrl);
+      service.setRelayUrl(relayUrl);
+      service.start(identity);
+      setStatus(service.getStatus());
+      appendLog(`AUTO RELAY ${relayUrl}`);
+    } finally {
+      setIsAutoDetectingRelay(false);
+    }
   };
 
   const sendPing = (peerId: string) => {
@@ -158,10 +209,12 @@ export function useDiscoveryViewModel() {
     status,
     relayUrlInput,
     setRelayUrlInput,
+    isAutoDetectingRelay,
     peers,
     logs,
     refreshNow,
     applyRelayUrl,
+    autoDetectRelay,
     useBrowserLocalTransport,
     sendPing,
     sendChatText,

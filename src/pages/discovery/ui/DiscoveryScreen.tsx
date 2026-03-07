@@ -14,10 +14,12 @@ export function DiscoveryScreen() {
     status,
     relayUrlInput,
     setRelayUrlInput,
+    isAutoDetectingRelay,
     peers,
     logs,
     refreshNow,
     applyRelayUrl,
+    autoDetectRelay,
     useBrowserLocalTransport,
     sendPing,
     sendChatText,
@@ -64,6 +66,14 @@ export function DiscoveryScreen() {
           onPress={() => applyRelayUrl().catch(() => undefined)}
         >
           <Text style={styles.actionButtonText}>Apply relay URL</Text>
+        </Pressable>
+        <Pressable
+          style={styles.secondaryActionButton}
+          onPress={() => autoDetectRelay().catch(() => undefined)}
+        >
+          <Text style={styles.secondaryActionButtonText}>
+            {isAutoDetectingRelay ? "Detecting..." : "Auto detect relay"}
+          </Text>
         </Pressable>
         <Pressable
           style={styles.secondaryActionButton}
