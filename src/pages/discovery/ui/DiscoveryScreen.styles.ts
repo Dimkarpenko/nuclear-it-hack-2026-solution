@@ -1,0 +1,87 @@
+import { StyleSheet } from "react-native";
+
+export const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#090b14",
+    padding: 16,
+    gap: 12,
+  },
+  title: {
+    color: "#f2f5ff",
+    fontSize: 20,
+    fontWeight: "700",
+  },
+  subtitle: {
+    color: "#b8c0df",
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  card: {
+    borderWidth: 1,
+    borderColor: "#2b3154",
+    borderRadius: 14,
+    backgroundColor: "#101326",
+    padding: 14,
+    gap: 8,
+  },
+  cardTitle: {
+    color: "#f2f5ff",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  statusRow: {
+    color: "#d6dcf3",
+    fontSize: 14,
+  },
+  actionButton: {
+    marginTop: 8,
+    borderRadius: 10,
+    backgroundColor: "#57d3ff",
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  actionButtonText: {
+    color: "#03111c",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  peerRow: {
+    borderWidth: 1,
+    borderColor: "#232949",
+    borderRadius: 10,
+    padding: 10,
+    gap: 6,
+  },
+  peerName: {
+    color: "#f2f5ff",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  peerMeta: {
+    color: "#9ca6cb",
+    fontSize: 12,
+  },
+  pingButton: {
+    marginTop: 2,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#57d3ff",
+    paddingVertical: 8,
+    alignItems: "center",
+  },
+  pingButtonText: {
+    color: "#9fe8ff",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  emptyText: {
+    color: "#9ca6cb",
+    fontSize: 13,
+  },
+  logLine: {
+    color: "#cfd7f7",
+    fontSize: 12,
+    lineHeight: 18,
+  },
+});

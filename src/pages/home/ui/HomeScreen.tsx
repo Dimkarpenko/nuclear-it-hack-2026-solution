@@ -30,7 +30,7 @@ export function HomeScreen({ navigation }: Props) {
     <View style={styles.container}>
       <Text style={styles.title}>Local messenger MVP initialized.</Text>
       <Text style={styles.subtitle}>
-        Stage 3 in progress: secure identity and pairing flow.
+        Stage 4 in progress: local discovery and signaling.
       </Text>
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Device</Text>
@@ -54,6 +54,12 @@ export function HomeScreen({ navigation }: Props) {
         onPress={() => navigation.navigate("Pairing")}
       >
         <Text style={styles.secondaryButtonText}>Open pairing</Text>
+      </Pressable>
+      <Pressable
+        style={styles.secondaryButton}
+        onPress={() => navigation.navigate("Discovery")}
+      >
+        <Text style={styles.secondaryButtonText}>Open discovery</Text>
       </Pressable>
     </View>
   );
