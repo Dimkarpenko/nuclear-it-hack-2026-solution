@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { Chat, FileTransfer, Message } from "@/entities/messenger";
+import { Chat, FileTransfer, Message, Peer } from "@/entities/messenger";
 import { getChatById, listChats, upsertChat } from "@/entities/chat";
 import {
   listMessagesByChat,
   updateMessageStatus,
   upsertMessage,
 } from "@/entities/message";
-import { listPeers } from "@/entities/peer";
+import { listPeers, upsertPeer } from "@/entities/peer";
 import {
   listTransfersByChat,
   updateTransferProgress,
@@ -104,8 +104,15 @@ const FILE_CHUNK_SIZE = 320;
 const FILE_REQUEST_RETRY_MS = 1_800;
 const FILE_INIT_RETRY_MS = 2_000;
 const FILE_INIT_MAX_ATTEMPTS = 5;
+const FAVORITES_PEER_ID = "favorites-peer";
+const FAVORITES_CHAT_ID = "favorites-chat";
+const FAVORITES_TITLE = "Избранное";
 
 function formatTitle(chat: Chat, peerNameById: Map<string, string>): string {
+  if (chat.id === FAVORITES_CHAT_ID) {
+    return FAVORITES_TITLE;
+  }
+
   if (chat.title && chat.title.trim().length > 0) {
     return chat.title;
   }
@@ -216,7 +223,50 @@ export function useChatViewModel() {
     entry.retryTimer = null;
   };
 
+  const ensureFavoritesChat = useCallback(async () => {
+    if (!localPeerId) {
+      return;
+    }
+
+    const now = Date.now();
+    const favoritesPeer: Peer = {
+      id: FAVORITES_PEER_ID,
+      displayName: FAVORITES_TITLE,
+      publicKey: localPeerId,
+      trustLevel: 100,
+      isBlocked: false,
+      lastSeenAt: now,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await upsertPeer(favoritesPeer);
+
+    const existing = await getChatById(FAVORITES_CHAT_ID);
+
+    const favoritesChat: Chat = existing
+      ? {
+          ...existing,
+          participantPeerId: FAVORITES_PEER_ID,
+          title: FAVORITES_TITLE,
+          updatedAt: now,
+        }
+      : {
+          id: FAVORITES_CHAT_ID,
+          type: "private",
+          participantPeerId: FAVORITES_PEER_ID,
+          title: FAVORITES_TITLE,
+          createdAt: now,
+          updatedAt: now,
+          lastMessageAt: null,
+        };
+
+    await upsertChat(favoritesChat);
+  }, [localPeerId]);
+
   const loadChats = useCallback(async () => {
+    await ensureFavoritesChat();
+
     const [dbChats, dbPeers] = await Promise.all([listChats(), listPeers()]);
 
     const peerNameById = new Map<string, string>();
@@ -224,25 +274,40 @@ export function useChatViewModel() {
       peerNameById.set(peer.id, peer.displayName);
     });
 
-    const nextChats = dbChats.map((chat) => ({
-      ...chat,
-      resolvedTitle: formatTitle(chat, peerNameById),
-    }));
+    const nextChats = dbChats
+      .map((chat) => ({
+        ...chat,
+        resolvedTitle: formatTitle(chat, peerNameById),
+      }))
+      .sort((a, b) => {
+        if (a.id === FAVORITES_CHAT_ID) {
+          return -1;
+        }
+
+        if (b.id === FAVORITES_CHAT_ID) {
+          return 1;
+        }
+
+        const aDate = a.lastMessageAt ?? 0;
+        const bDate = b.lastMessageAt ?? 0;
+
+        if (aDate !== bDate) {
+          return bDate - aDate;
+        }
+
+        return b.updatedAt - a.updatedAt;
+      });
 
     setChats(nextChats);
 
     setSelectedChatId((current) => {
-      if (nextChats.length === 0) {
-        return null;
-      }
-
       if (current && nextChats.some((chat) => chat.id === current)) {
         return current;
       }
 
-      return nextChats[0].id;
+      return null;
     });
-  }, []);
+  }, [ensureFavoritesChat]);
 
   const loadMessages = useCallback(async (chatId: string) => {
     const dbMessages = await listMessagesByChat(chatId, 150);
@@ -270,6 +335,14 @@ export function useChatViewModel() {
       loadTransfers(selectedChatId),
     ]).catch(() => undefined);
   }, [selectedChatId, loadMessages, loadTransfers]);
+
+  useEffect(() => {
+    if (!localPeerId) {
+      return;
+    }
+
+    refreshAll().catch(() => undefined);
+  }, [localPeerId, refreshAll]);
 
   const refreshChatData = useCallback(
     async (chatId: string) => {
@@ -634,8 +707,7 @@ export function useChatViewModel() {
       await upsertMessage(message);
       await loadChats();
 
-      if (!selectedChatId || selectedChatId === chat.id) {
-        setSelectedChatId(chat.id);
+      if (selectedChatId === chat.id) {
         await loadMessages(chat.id);
       }
     },
@@ -1030,6 +1102,10 @@ export function useChatViewModel() {
     setSelectedChatId(chatId);
   };
 
+  const closeChat = () => {
+    setSelectedChatId(null);
+  };
+
   const refresh = async () => {
     await refreshAll();
     if (selectedChatId) {
@@ -1142,26 +1218,31 @@ export function useChatViewModel() {
     const now = Date.now();
     const expiresAt = now + RELIABLE_TTL_MS;
     const id = makeMessageId();
+    const isFavorites = chat.id === FAVORITES_CHAT_ID;
 
     const message: Message = {
       id,
       chatId: chat.id,
       senderPeerId: localPeerId,
-      targetPeerId: chat.participantPeerId,
+      targetPeerId: isFavorites ? localPeerId : chat.participantPeerId,
       kind: "text",
       body: payload,
       ttlMs: RELIABLE_TTL_MS,
       dedupeKey: id,
-      status: "sent",
+      status: isFavorites ? "delivered" : "sent",
       createdAt: now,
       updatedAt: now,
-      deliveredAt: null,
+      deliveredAt: isFavorites ? now : null,
     };
 
     await upsertMessage(message);
     setDraft("");
     await loadChats();
     await loadMessages(chat.id);
+
+    if (isFavorites) {
+      return;
+    }
 
     const sent = service.sendSignal(
       chat.participantPeerId,
@@ -1212,6 +1293,7 @@ export function useChatViewModel() {
     setFileDraft,
     reliability,
     selectChat,
+    closeChat,
     refresh,
     sendMessage,
     sendFile,

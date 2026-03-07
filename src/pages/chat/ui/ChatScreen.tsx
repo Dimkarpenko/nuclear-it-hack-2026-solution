@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Modal,
   Pressable,
@@ -9,27 +9,21 @@ import {
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { RootStackParamList } from "@/core/navigation/RootNavigator";
 import { styles } from "./ChatScreen.styles";
 import { useChatViewModel } from "./useChatViewModel";
 
+const FAVORITES_CHAT_ID = "favorites-chat";
+
 function formatMessageMeta(createdAt: number, status: string): string {
   return `${new Date(createdAt).toLocaleTimeString()} · ${status}`;
 }
 
-function formatPercent(transferredBytes: number, totalBytes: number): string {
-  if (totalBytes <= 0) {
-    return "0%";
-  }
-
-  const ratio = Math.min(1, Math.max(0, transferredBytes / totalBytes));
-  return `${Math.round(ratio * 100)}%`;
-}
-
 function formatLastActivity(value: number | null): string {
   if (!value) {
-    return "No messages yet";
+    return "Без сообщений";
   }
 
   return new Date(value).toLocaleString();
@@ -38,6 +32,7 @@ function formatLastActivity(value: number | null): string {
 export function ChatScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const insets = useSafeAreaInsets();
 
   const {
     isReady,
@@ -45,88 +40,59 @@ export function ChatScreen() {
     chats,
     selectedChatId,
     messages,
-    transfers,
     draft,
     setDraft,
-    fileDraft,
-    setFileDraft,
     selectChat,
+    closeChat,
     refresh,
     sendMessage,
-    sendFile,
   } = useChatViewModel();
 
-  const canSend = draft.trim().length > 0 && selectedChatId !== null;
-  const canSendFile = fileDraft.trim().length > 0 && selectedChatId !== null;
   const [isFabMenuOpen, setIsFabMenuOpen] = useState(false);
 
-  return (
-    <View style={styles.container}>
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.content}
-      >
-        <View style={styles.headerRow}>
-          <View>
-            <Text style={styles.title}>Чаты</Text>
-            <Text style={styles.subtitle}>Локальный мессенджер без облака</Text>
-          </View>
-          <Pressable
-            style={styles.refreshPill}
-            onPress={() => refresh().catch(() => undefined)}
-          >
-            <Text style={styles.refreshPillText}>Обновить</Text>
+  const activeChat = useMemo(
+    () => chats.find((chat) => chat.id === selectedChatId) ?? null,
+    [chats, selectedChatId],
+  );
+
+  const canSend = draft.trim().length > 0 && activeChat !== null;
+
+  if (activeChat) {
+    return (
+      <View style={styles.container}>
+        <View
+          style={[
+            styles.roomHeader,
+            {
+              paddingTop: insets.top,
+              minHeight: 68 + insets.top,
+            },
+          ]}
+        >
+          <Pressable style={styles.backButton} onPress={closeChat}>
+            <Text style={styles.backButtonText}>Назад</Text>
           </Pressable>
-        </View>
-
-        <View style={styles.identityCard}>
-          <Text style={styles.identityLabel}>Это устройство</Text>
-          <Text style={styles.identityValue}>{localPeerId ?? "-"}</Text>
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Список чатов</Text>
-          {chats.length === 0 ? (
-            <Text style={styles.emptyText}>
-              Нажми + чтобы добавить собеседника
+          <View style={styles.roomHeaderTextWrap}>
+            <Text style={styles.roomHeaderTitle}>
+              {activeChat.resolvedTitle}
             </Text>
-          ) : (
-            <View style={styles.chatList}>
-              {chats.map((chat) => {
-                const active = chat.id === selectedChatId;
-                return (
-                  <Pressable
-                    key={chat.id}
-                    style={[
-                      styles.chatRow,
-                      active ? styles.chatRowActive : null,
-                    ]}
-                    onPress={() => selectChat(chat.id)}
-                  >
-                    <Text style={styles.chatName}>{chat.resolvedTitle}</Text>
-                    <Text style={styles.chatMeta}>
-                      {chat.participantPeerId.slice(0, 12)}
-                    </Text>
-                    <Text style={styles.chatMeta}>
-                      {formatLastActivity(chat.lastMessageAt)}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          )}
+            <Text style={styles.roomHeaderMeta}>
+              {activeChat.id === FAVORITES_CHAT_ID
+                ? "Сохраненные сообщения"
+                : activeChat.participantPeerId.slice(0, 12)}
+            </Text>
+          </View>
         </View>
 
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Диалог</Text>
+        <View style={styles.roomBody}>
           {!isReady ? (
-            <Text style={styles.emptyText}>Загрузка данных...</Text>
-          ) : selectedChatId === null ? (
-            <Text style={styles.emptyText}>
-              Выбери чат, чтобы начать переписку
-            </Text>
+            <View style={styles.centerWrap}>
+              <Text style={styles.emptyText}>Загрузка...</Text>
+            </View>
           ) : messages.length === 0 ? (
-            <Text style={styles.emptyText}>Отправь первое сообщение</Text>
+            <View style={styles.centerWrap}>
+              <Text style={styles.emptyText}>Начни переписку первым</Text>
+            </View>
           ) : (
             <ScrollView
               style={styles.messageList}
@@ -158,15 +124,23 @@ export function ChatScreen() {
               })}
             </ScrollView>
           )}
+        </View>
 
+        <View
+          style={[
+            styles.composerWrap,
+            {
+              paddingBottom: 86 + insets.bottom,
+            },
+          ]}
+        >
           <View style={styles.composerRow}>
             <TextInput
               value={draft}
               onChangeText={setDraft}
               style={styles.input}
-              placeholder="Введите сообщение"
+              placeholder="Сообщение"
               placeholderTextColor="#7e86a8"
-              editable={selectedChatId !== null}
             />
             <Pressable
               style={[
@@ -180,48 +154,55 @@ export function ChatScreen() {
             </Pressable>
           </View>
         </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.container}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={[
+          styles.listContent,
+          {
+            paddingTop: 16 + insets.top,
+            paddingBottom: 156 + insets.bottom,
+          },
+        ]}
+      >
+        <View style={styles.headerRow}>
+          <View>
+            <Text style={styles.title}>Чаты</Text>
+          </View>
+          <Pressable
+            style={styles.refreshPill}
+            onPress={() => refresh().catch(() => undefined)}
+          >
+            <Text style={styles.refreshPillText}>Обновить</Text>
+          </Pressable>
+        </View>
 
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Передача файла (демо)</Text>
-          <TextInput
-            value={fileDraft}
-            onChangeText={setFileDraft}
-            style={styles.fileInput}
-            placeholder="Текст файла для отправки по частям"
-            placeholderTextColor="#7e86a8"
-            editable={selectedChatId !== null}
-            multiline
-            numberOfLines={3}
-          />
-          <Pressable
-            style={[
-              styles.fileButton,
-              canSendFile ? null : styles.disabledSendButton,
-            ]}
-            onPress={() => sendFile().catch(() => undefined)}
-            disabled={!canSendFile}
-          >
-            <Text style={styles.fileButtonText}>Отправить файл</Text>
-          </Pressable>
-
-          {transfers.length === 0 ? (
-            <Text style={styles.emptyText}>Передач пока нет</Text>
+          {chats.length === 0 ? (
+            <Text style={styles.emptyText}>Чатов пока нет</Text>
           ) : (
-            <View style={styles.transferList}>
-              {transfers.map((transfer) => (
-                <View key={transfer.id} style={styles.transferRow}>
-                  <Text style={styles.transferName}>{transfer.fileName}</Text>
-                  <Text style={styles.transferMeta}>
-                    {transfer.direction} · {transfer.status}
+            <View style={styles.chatList}>
+              {chats.map((chat) => (
+                <Pressable
+                  key={chat.id}
+                  style={styles.chatRow}
+                  onPress={() => selectChat(chat.id)}
+                >
+                  <Text style={styles.chatName}>{chat.resolvedTitle}</Text>
+                  <Text style={styles.chatMeta}>
+                    {chat.id === FAVORITES_CHAT_ID
+                      ? "Сохраненные сообщения"
+                      : chat.participantPeerId.slice(0, 12)}
                   </Text>
-                  <Text style={styles.transferMeta}>
-                    {transfer.transferredBytes}/{transfer.totalBytes} B ·{" "}
-                    {formatPercent(
-                      transfer.transferredBytes,
-                      transfer.totalBytes,
-                    )}
+                  <Text style={styles.chatMeta}>
+                    {formatLastActivity(chat.lastMessageAt)}
                   </Text>
-                </View>
+                </Pressable>
               ))}
             </View>
           )}
@@ -235,7 +216,12 @@ export function ChatScreen() {
         onRequestClose={() => setIsFabMenuOpen(false)}
       >
         <Pressable
-          style={styles.fabBackdrop}
+          style={[
+            styles.fabBackdrop,
+            {
+              paddingBottom: 98 + insets.bottom,
+            },
+          ]}
           onPress={() => setIsFabMenuOpen(false)}
         >
           <View style={styles.fabMenu}>
@@ -259,7 +245,7 @@ export function ChatScreen() {
                 navigation.navigate("Pairing");
               }}
             >
-              <Text style={styles.fabActionTitle}>Подключить по коду</Text>
+              <Text style={styles.fabActionTitle}>Добавить по коду</Text>
               <Text style={styles.fabActionSubtitle}>
                 Генерация или ввод случайной код-фразы
               </Text>
@@ -275,7 +261,15 @@ export function ChatScreen() {
         </Pressable>
       </Modal>
 
-      <Pressable style={styles.fab} onPress={() => setIsFabMenuOpen(true)}>
+      <Pressable
+        style={[
+          styles.fab,
+          {
+            bottom: 98 + insets.bottom,
+          },
+        ]}
+        onPress={() => setIsFabMenuOpen(true)}
+      >
         <Text style={styles.fabIcon}>+</Text>
       </Pressable>
     </View>

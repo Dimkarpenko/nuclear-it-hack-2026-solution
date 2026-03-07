@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ChatScreen } from "@/pages/chat";
 import { SettingsScreen } from "@/pages/settings";
@@ -10,6 +11,7 @@ type TabKey = "chats" | "settings";
 
 export function MainScreen() {
   const [activeTab, setActiveTab] = useState<TabKey>("chats");
+  const insets = useSafeAreaInsets();
 
   return (
     <View style={styles.container}>
@@ -17,7 +19,14 @@ export function MainScreen() {
         {activeTab === "chats" ? <ChatScreen /> : <SettingsScreen />}
       </View>
 
-      <View style={styles.tabBarWrap}>
+      <View
+        style={[
+          styles.tabBarWrap,
+          {
+            paddingBottom: Math.max(14, insets.bottom + 10),
+          },
+        ]}
+      >
         <View style={styles.tabBar}>
           <Pressable
             style={styles.tabButton}

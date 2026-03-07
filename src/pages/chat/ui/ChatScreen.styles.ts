@@ -5,7 +5,7 @@ export const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#090b14",
   },
-  content: {
+  listContent: {
     gap: 12,
     paddingHorizontal: 16,
     paddingTop: 16,
@@ -21,11 +21,6 @@ export const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#f2f5ff",
   },
-  subtitle: {
-    marginTop: 4,
-    fontSize: 14,
-    color: "#9ca8d3",
-  },
   refreshPill: {
     borderRadius: 999,
     borderWidth: 1,
@@ -39,24 +34,6 @@ export const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
   },
-  identityCard: {
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#2b3154",
-    backgroundColor: "#101326",
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    gap: 4,
-  },
-  identityLabel: {
-    color: "#8f9bc4",
-    fontSize: 12,
-  },
-  identityValue: {
-    color: "#f2f5ff",
-    fontSize: 13,
-    fontWeight: "600",
-  },
   card: {
     borderRadius: 18,
     borderWidth: 1,
@@ -65,11 +42,6 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     gap: 8,
-  },
-  cardTitle: {
-    color: "#f2f5ff",
-    fontSize: 16,
-    fontWeight: "700",
   },
   chatList: {
     gap: 8,
@@ -81,10 +53,6 @@ export const styles = StyleSheet.create({
     backgroundColor: "#0f1530",
     paddingHorizontal: 12,
     paddingVertical: 10,
-  },
-  chatRowActive: {
-    borderColor: "#57d3ff",
-    backgroundColor: "#132039",
   },
   chatName: {
     color: "#f2f5ff",
@@ -100,11 +68,59 @@ export const styles = StyleSheet.create({
     color: "#9ba6cd",
     fontSize: 14,
   },
+  roomHeader: {
+    height: 68,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#242b4a",
+    backgroundColor: "#101326",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  backButton: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#2b3154",
+    backgroundColor: "#0f1530",
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  backButtonText: {
+    color: "#dce3ff",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  roomHeaderTextWrap: {
+    flex: 1,
+    gap: 2,
+  },
+  roomHeaderTitle: {
+    color: "#f2f5ff",
+    fontSize: 17,
+    fontWeight: "700",
+  },
+  roomHeaderMeta: {
+    color: "#8f9bc4",
+    fontSize: 12,
+  },
+  roomBody: {
+    flex: 1,
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 8,
+  },
+  centerWrap: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   messageList: {
-    maxHeight: 340,
+    flex: 1,
   },
   messageListContent: {
     gap: 8,
+    paddingBottom: 8,
   },
   bubbleOut: {
     alignSelf: "flex-end",
@@ -146,15 +162,22 @@ export const styles = StyleSheet.create({
     color: "#91a0cb",
     fontSize: 11,
   },
+  composerWrap: {
+    borderTopWidth: 1,
+    borderTopColor: "#242b4a",
+    backgroundColor: "#101326",
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 86,
+  },
   composerRow: {
     flexDirection: "row",
     gap: 8,
     alignItems: "center",
-    marginTop: 4,
   },
   input: {
     flex: 1,
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: "#2b3154",
     backgroundColor: "#0f1530",
@@ -164,7 +187,7 @@ export const styles = StyleSheet.create({
     fontSize: 14,
   },
   sendButton: {
-    borderRadius: 10,
+    borderRadius: 12,
     backgroundColor: "#57d3ff",
     paddingHorizontal: 16,
     paddingVertical: 10,
@@ -176,51 +199,6 @@ export const styles = StyleSheet.create({
   },
   disabledSendButton: {
     opacity: 0.5,
-  },
-  fileInput: {
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#2b3154",
-    backgroundColor: "#0f1530",
-    color: "#f2f5ff",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-    minHeight: 84,
-    textAlignVertical: "top",
-  },
-  fileButton: {
-    borderRadius: 10,
-    backgroundColor: "#8ad36b",
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    alignItems: "center",
-  },
-  fileButtonText: {
-    color: "#09210d",
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  transferList: {
-    gap: 8,
-  },
-  transferRow: {
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#2b3154",
-    backgroundColor: "#0f1530",
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    gap: 2,
-  },
-  transferName: {
-    color: "#f2f5ff",
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  transferMeta: {
-    color: "#9ba6cd",
-    fontSize: 12,
   },
   fab: {
     position: "absolute",

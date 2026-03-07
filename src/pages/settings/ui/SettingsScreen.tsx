@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import Constants from "expo-constants";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { StorageStats } from "@/entities/messenger";
 import { getDiscoveryService } from "@/features/discovery";
@@ -11,6 +12,7 @@ import { styles } from "./SettingsScreen.styles";
 
 export function SettingsScreen() {
   const service = useMemo(() => getDiscoveryService(), []);
+  const insets = useSafeAreaInsets();
   const [deviceId, setDeviceId] = useState("-");
   const [displayName, setDisplayName] = useState("-");
   const [fingerprint, setFingerprint] = useState("-");
@@ -56,7 +58,16 @@ export function SettingsScreen() {
     (Constants.expoConfig?.sdkVersion as string | undefined) ?? "55";
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={[
+        styles.content,
+        {
+          paddingTop: 16 + insets.top,
+          paddingBottom: 112 + insets.bottom,
+        },
+      ]}
+    >
       <View>
         <Text style={styles.title}>Настройки</Text>
         <Text style={styles.subtitle}>
