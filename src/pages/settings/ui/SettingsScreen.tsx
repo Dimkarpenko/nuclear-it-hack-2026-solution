@@ -1,28 +1,38 @@
 import { useEffect, useMemo, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import Constants from "expo-constants";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { StorageStats } from "@/entities/messenger";
 import { getDiscoveryService } from "@/features/discovery";
-import { getOrCreateDeviceIdentity } from "@/features/security";
+import {
+  getOrCreateDeviceIdentity,
+  updateDeviceDisplayName,
+} from "@/features/security";
 import { getStorageStats } from "@/shared/lib/storage";
 
 import { styles } from "./SettingsScreen.styles";
 
 type SettingsScreenProps = {
   onBack?: () => void;
+  onDisplayNameChanged?: (name: string) => void;
 };
 
-export function SettingsScreen({ onBack }: SettingsScreenProps) {
+export function SettingsScreen({
+  onBack,
+  onDisplayNameChanged,
+}: SettingsScreenProps) {
   const service = useMemo(() => getDiscoveryService(), []);
   const insets = useSafeAreaInsets();
   const [deviceId, setDeviceId] = useState("-");
   const [displayName, setDisplayName] = useState("-");
+  const [displayNameDraft, setDisplayNameDraft] = useState("");
   const [fingerprint, setFingerprint] = useState("-");
   const [stats, setStats] = useState<StorageStats | null>(null);
   const [transportState, setTransportState] = useState(service.getStatus());
   const [nearbyCount, setNearbyCount] = useState(service.getPeers().length);
+  const [isSavingName, setIsSavingName] = useState(false);
+  const [nameError, setNameError] = useState("");
 
   const refresh = async () => {
     const [identity, nextStats] = await Promise.all([
@@ -33,10 +43,31 @@ export function SettingsScreen({ onBack }: SettingsScreenProps) {
     service.start(identity);
     setDeviceId(identity.deviceId);
     setDisplayName(identity.displayName);
+    setDisplayNameDraft(identity.displayName);
     setFingerprint(identity.publicKey.slice(0, 20).toUpperCase());
     setStats(nextStats);
     setTransportState(service.getStatus());
     setNearbyCount(service.getPeers().length);
+  };
+
+  const saveDisplayName = async () => {
+    const safe = displayNameDraft.trim();
+    if (!safe) {
+      setNameError("Имя не может быть пустым");
+      return;
+    }
+
+    setIsSavingName(true);
+    try {
+      const updated = await updateDeviceDisplayName(safe);
+      service.start(updated);
+      setDisplayName(updated.displayName);
+      setDisplayNameDraft(updated.displayName);
+      setNameError("");
+      onDisplayNameChanged?.(updated.displayName);
+    } finally {
+      setIsSavingName(false);
+    }
   };
 
   useEffect(() => {
@@ -85,6 +116,39 @@ export function SettingsScreen({ onBack }: SettingsScreenProps) {
             Техническое состояние и диагностика.
           </Text>
         </View>
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Профиль</Text>
+        <TextInput
+          value={displayNameDraft}
+          onChangeText={(value) => {
+            setDisplayNameDraft(value);
+            if (nameError) {
+              setNameError("");
+            }
+          }}
+          style={styles.profileInput}
+          placeholder="Твое имя"
+          placeholderTextColor="#8d9ac7"
+          autoCapitalize="words"
+          autoCorrect={false}
+          maxLength={40}
+          editable={!isSavingName}
+        />
+        {nameError ? <Text style={styles.errorText}>{nameError}</Text> : null}
+        <Pressable
+          style={[
+            styles.secondaryButton,
+            isSavingName ? styles.secondaryButtonDisabled : null,
+          ]}
+          onPress={() => saveDisplayName().catch(() => undefined)}
+          disabled={isSavingName}
+        >
+          <Text style={styles.secondaryButtonText}>
+            {isSavingName ? "Сохранение..." : "Сохранить имя"}
+          </Text>
+        </Pressable>
       </View>
 
       <View style={styles.card}>

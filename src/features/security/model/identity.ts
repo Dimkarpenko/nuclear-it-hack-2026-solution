@@ -4,6 +4,7 @@ import * as SecureStore from "expo-secure-store";
 import { DeviceIdentity } from "./types";
 
 const IDENTITY_KEY = "hex.device.identity.v1";
+const GENERATED_NAME_PREFIX = "Node-";
 
 async function sha256(value: string): Promise<string> {
   return Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, value);
@@ -21,6 +22,30 @@ function normalizeDisplayName(
   return `Node-${fallbackId.slice(0, 6)}`;
 }
 
+function isGeneratedDisplayName(
+  displayName: string,
+  deviceId: string,
+): boolean {
+  return displayName === `${GENERATED_NAME_PREFIX}${deviceId.slice(0, 6)}`;
+}
+
+export function isProfileNameRequired(identity: DeviceIdentity): boolean {
+  const safe = identity.displayName.trim();
+  if (safe.length === 0) {
+    return true;
+  }
+
+  if (identity.isProfileCompleted === true) {
+    return false;
+  }
+
+  if (identity.isProfileCompleted === false) {
+    return true;
+  }
+
+  return isGeneratedDisplayName(safe, identity.deviceId);
+}
+
 async function createNewIdentity(
   displayName?: string,
 ): Promise<DeviceIdentity> {
@@ -34,6 +59,7 @@ async function createNewIdentity(
   return {
     deviceId,
     displayName: normalizeDisplayName(displayName, deviceId),
+    isProfileCompleted: Boolean(displayName && displayName.trim().length > 0),
     publicKey,
     privateKey,
     createdAt: now,
@@ -71,6 +97,7 @@ export async function getOrCreateDeviceIdentity(
       const updated: DeviceIdentity = {
         ...existing,
         displayName: normalizeDisplayName(displayName, existing.deviceId),
+        isProfileCompleted: true,
         updatedAt: Date.now(),
       };
       await saveIdentity(updated);
@@ -93,6 +120,7 @@ export async function updateDeviceDisplayName(
   const updated: DeviceIdentity = {
     ...identity,
     displayName: normalizeDisplayName(displayName, identity.deviceId),
+    isProfileCompleted: true,
     updatedAt: Date.now(),
   };
 

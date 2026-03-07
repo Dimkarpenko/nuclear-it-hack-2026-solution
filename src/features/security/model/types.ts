@@ -1,6 +1,7 @@
 export interface DeviceIdentity {
   deviceId: string;
   displayName: string;
+  isProfileCompleted?: boolean;
   publicKey: string;
   privateKey: string;
   createdAt: number;

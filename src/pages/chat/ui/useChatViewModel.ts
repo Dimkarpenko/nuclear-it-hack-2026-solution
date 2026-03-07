@@ -23,6 +23,32 @@ import {
 
 type ChatListItem = Chat & { resolvedTitle: string };
 
+type VoiceCallIntentType =
+  | "call-start"
+  | "call-accept"
+  | "call-end"
+  | "video-toggle"
+  | "webrtc-offer"
+  | "webrtc-answer"
+  | "webrtc-ice";
+
+type VoiceCallIntentPayload = {
+  type: VoiceCallIntentType;
+  videoEnabled?: boolean;
+  sdp?: string;
+  candidate?: string;
+};
+
+type IncomingCallEvent = {
+  chatId: string;
+  peerId: string;
+  type: VoiceCallIntentType;
+  videoEnabled?: boolean;
+  sdp?: string;
+  candidate?: string;
+  token: number;
+};
+
 type ChatReliabilityStats = {
   pending: number;
   delivered: number;
@@ -95,6 +121,7 @@ type IncomingFileSession = {
   totalChunks: number;
   nextChunkIndex: number;
   receivedBytes: number;
+  chunks: string[];
   requestRetryTimer: ReturnType<typeof setTimeout> | null;
 };
 
@@ -102,10 +129,12 @@ const RELIABLE_TTL_MS = 15_000;
 const RETRY_DELAY_MS = 1_250;
 const MAX_ATTEMPTS = 5;
 const SEEN_TTL_MS = 60_000;
-const FILE_CHUNK_SIZE = 320;
+const FILE_CHUNK_SIZE = 4096;
+const FILE_PROGRESS_SYNC_EVERY_CHUNKS = 16;
 const FILE_REQUEST_RETRY_MS = 1_800;
 const FILE_INIT_RETRY_MS = 2_000;
 const FILE_INIT_MAX_ATTEMPTS = 5;
+const VOICE_FILES_DIR = "voice-messages";
 const FAVORITES_PEER_ID = "favorites-peer";
 const FAVORITES_CHAT_ID = "favorites-chat";
 const FAVORITES_TITLE = "Избранное";
@@ -184,6 +213,35 @@ function makeFileMessageBody(fileName: string, totalBytes: number): string {
   return `File: ${fileName} (${totalBytes} B)`;
 }
 
+function isVoiceMimeType(mimeType: string): boolean {
+  return mimeType.toLowerCase().startsWith("audio/");
+}
+
+function makeVoiceMessageText(): string {
+  return "Голосовое сообщение";
+}
+
+function getVoiceFileUri(transferId: string): string | null {
+  if (!FileSystem.documentDirectory) {
+    return null;
+  }
+
+  return `${FileSystem.documentDirectory}${VOICE_FILES_DIR}/${transferId}.m4a`;
+}
+
+async function ensureVoiceFilesDirectory(): Promise<void> {
+  if (!FileSystem.documentDirectory) {
+    return;
+  }
+
+  await FileSystem.makeDirectoryAsync(
+    `${FileSystem.documentDirectory}${VOICE_FILES_DIR}`,
+    {
+      intermediates: true,
+    },
+  );
+}
+
 function makeVoiceMessageBody(peerName: string | null | undefined): string {
   if (peerName && peerName.trim().length > 0) {
     return `Голосовой чат: приглашение для ${peerName}`;
@@ -204,10 +262,13 @@ export function useChatViewModel() {
   const [localPeerId, setLocalPeerId] = useState<string | null>(null);
   const [relayUrl, setRelayUrl] = useState<string | null>(null);
   const [chats, setChats] = useState<ChatListItem[]>([]);
+  const [onlinePeerIds, setOnlinePeerIds] = useState<string[]>([]);
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [transfers, setTransfers] = useState<FileTransfer[]>([]);
   const [draft, setDraft] = useState("");
+  const [incomingCallEvent, setIncomingCallEvent] =
+    useState<IncomingCallEvent | null>(null);
   const [reliability, setReliability] = useState<ChatReliabilityStats>({
     pending: 0,
     delivered: 0,
@@ -761,7 +822,7 @@ export function useChatViewModel() {
   );
 
   const handleIncomingVoiceIntent = useCallback(
-    async (fromPeerId: string) => {
+    async (fromPeerId: string, payload: string | null) => {
       if (!localPeerId) {
         return;
       }
@@ -778,13 +839,60 @@ export function useChatViewModel() {
         return;
       }
 
-      await appendSystemMessage(
-        chat.id,
-        fromPeerId,
-        localPeerId,
-        makeVoiceMessageBody(peerNameHint),
-        "delivered",
-      );
+      const parsed = parseSignalPayload<VoiceCallIntentPayload>(payload);
+      const intentType: VoiceCallIntentType = parsed?.type ?? "call-start";
+
+      if (intentType === "call-start") {
+        await appendSystemMessage(
+          chat.id,
+          fromPeerId,
+          localPeerId,
+          makeVoiceMessageBody(peerNameHint),
+          "delivered",
+        );
+      }
+
+      if (intentType === "call-end") {
+        await appendSystemMessage(
+          chat.id,
+          fromPeerId,
+          localPeerId,
+          "Собеседник завершил звонок",
+          "delivered",
+        );
+      }
+
+      if (intentType === "call-accept") {
+        await appendSystemMessage(
+          chat.id,
+          fromPeerId,
+          localPeerId,
+          "Собеседник принял звонок",
+          "delivered",
+        );
+      }
+
+      if (intentType === "video-toggle") {
+        await appendSystemMessage(
+          chat.id,
+          fromPeerId,
+          localPeerId,
+          parsed?.videoEnabled
+            ? "Собеседник включил видео"
+            : "Собеседник выключил видео",
+          "delivered",
+        );
+      }
+
+      setIncomingCallEvent({
+        chatId: chat.id,
+        peerId: fromPeerId,
+        type: intentType,
+        videoEnabled: parsed?.videoEnabled,
+        sdp: parsed?.sdp,
+        candidate: parsed?.candidate,
+        token: Date.now(),
+      });
 
       await loadChats();
 
@@ -854,7 +962,9 @@ export function useChatViewModel() {
         senderPeerId: fromPeerId,
         targetPeerId: localPeerId,
         kind: "file",
-        body: makeFileMessageBody(meta.fileName, meta.totalBytes),
+        body: isVoiceMimeType(meta.mimeType)
+          ? makeVoiceMessageText()
+          : makeFileMessageBody(meta.fileName, meta.totalBytes),
         ttlMs: RELIABLE_TTL_MS,
         dedupeKey: meta.messageId,
         status: "delivered",
@@ -878,6 +988,7 @@ export function useChatViewModel() {
         totalChunks: meta.totalChunks,
         nextChunkIndex: 0,
         receivedBytes: 0,
+        chunks: new Array(meta.totalChunks).fill(""),
         requestRetryTimer: null,
       };
 
@@ -945,6 +1056,7 @@ export function useChatViewModel() {
         session.totalBytes,
         session.receivedBytes + data.data.length,
       );
+      session.chunks[data.index] = data.data;
 
       const now = Date.now();
 
@@ -952,11 +1064,34 @@ export function useChatViewModel() {
         session.nextChunkIndex >= session.totalChunks ||
         session.receivedBytes >= session.totalBytes
       ) {
+        if (isVoiceMimeType(session.mimeType)) {
+          const uri = getVoiceFileUri(session.transferId);
+          if (uri) {
+            await ensureVoiceFilesDirectory();
+            await FileSystem.writeAsStringAsync(uri, session.chunks.join(""), {
+              encoding: FileSystem.EncodingType.Base64,
+            });
+          }
+        }
+
         await updateTransferProgress(
           session.transferId,
           session.totalBytes,
           "completed",
           now,
+        );
+
+        setTransfers((prev) =>
+          prev.map((item) =>
+            item.id === session.transferId
+              ? {
+                  ...item,
+                  transferredBytes: session.totalBytes,
+                  status: "completed",
+                  updatedAt: now,
+                }
+              : item,
+          ),
         );
 
         incomingFileRef.current.delete(session.transferId);
@@ -973,14 +1108,27 @@ export function useChatViewModel() {
         return;
       }
 
-      await updateTransferProgress(
-        session.transferId,
-        session.receivedBytes,
-        "active",
-        now,
+      setTransfers((prev) =>
+        prev.map((item) =>
+          item.id === session.transferId
+            ? {
+                ...item,
+                transferredBytes: session.receivedBytes,
+                status: "active",
+                updatedAt: now,
+              }
+            : item,
+        ),
       );
 
-      await refreshChatData(session.chatId);
+      if (session.nextChunkIndex % FILE_PROGRESS_SYNC_EVERY_CHUNKS === 0) {
+        updateTransferProgress(
+          session.transferId,
+          session.receivedBytes,
+          "active",
+          now,
+        ).catch(() => undefined);
+      }
 
       sendNextChunkRequest(session);
       scheduleChunkRequestRetry(session.transferId);
@@ -1034,15 +1182,35 @@ export function useChatViewModel() {
         session.totalBytes,
         Math.max(0, nextIndex * session.chunkSize),
       );
-      await updateTransferProgress(
-        session.transferId,
-        confirmedBytes,
-        "active",
-        Date.now(),
+      const now = Date.now();
+      const sentChunks = nextIndex + 1;
+
+      setTransfers((prev) =>
+        prev.map((item) =>
+          item.id === session.transferId
+            ? {
+                ...item,
+                transferredBytes: confirmedBytes,
+                status: "active",
+                updatedAt: now,
+              }
+            : item,
+        ),
       );
-      await refreshChatData(session.chatId);
+
+      if (
+        sentChunks % FILE_PROGRESS_SYNC_EVERY_CHUNKS === 0 ||
+        sentChunks >= session.totalChunks
+      ) {
+        updateTransferProgress(
+          session.transferId,
+          confirmedBytes,
+          "active",
+          now,
+        ).catch(() => undefined);
+      }
     },
-    [refreshChatData, service],
+    [service],
   );
 
   const handleFileComplete = useCallback(
@@ -1111,6 +1279,10 @@ export function useChatViewModel() {
       setLocalPeerId(nextStatus.localPeerId);
     });
 
+    const unsubscribePeers = service.subscribePeers((nextPeers) => {
+      setOnlinePeerIds(nextPeers.map((peer) => peer.peerId));
+    });
+
     const unsubscribeSignals = service.subscribeSignals((signal) => {
       if (signal.kind === "ack") {
         const ackForId = signal.ackForId;
@@ -1143,7 +1315,9 @@ export function useChatViewModel() {
       }
 
       if (signal.kind === "voice-intent") {
-        handleIncomingVoiceIntent(signal.fromPeerId).catch(() => undefined);
+        handleIncomingVoiceIntent(signal.fromPeerId, signal.payload).catch(
+          () => undefined,
+        );
         return;
       }
 
@@ -1183,6 +1357,7 @@ export function useChatViewModel() {
     return () => {
       mounted = false;
       unsubscribeStatus();
+      unsubscribePeers();
       unsubscribeSignals();
       pendingRef.current.forEach((entry) => {
         if (entry.retryTimer) {
@@ -1233,10 +1408,11 @@ export function useChatViewModel() {
     }
 
     if (localPeerId && chat.participantPeerId !== localPeerId) {
+      const identity = await getOrCreateDeviceIdentity();
       service.sendSignal(
         chat.participantPeerId,
         "pairing-intent",
-        (peerNameHint ?? "").trim() || null,
+        identity.displayName,
       );
     }
 
@@ -1359,7 +1535,10 @@ export function useChatViewModel() {
     scheduleFileInitRetry(transferId);
   };
 
-  const sendVoiceInvite = async () => {
+  const sendVoiceMessage = async (
+    recordingUri: string,
+    durationMs?: number,
+  ) => {
     if (!selectedChatId || !localPeerId) {
       return;
     }
@@ -1369,18 +1548,168 @@ export function useChatViewModel() {
       return;
     }
 
+    const content = await FileSystem.readAsStringAsync(recordingUri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+
+    if (!content) {
+      return;
+    }
+
+    const now = Date.now();
+    const messageId = makeMessageId();
+    const transferId = makeTransferId();
+    const chunkSize = FILE_CHUNK_SIZE;
+    const chunks = splitToChunks(content, chunkSize);
+    const totalChunks = chunks.length;
+    const encodedBytes = content.length;
+    const safeDurationMs =
+      typeof durationMs === "number" && Number.isFinite(durationMs)
+        ? Math.max(0, Math.floor(durationMs))
+        : 0;
+    const fileName =
+      safeDurationMs > 0
+        ? `voice-${Date.now()}-${safeDurationMs}ms.m4a`
+        : `voice-${Date.now()}.m4a`;
+    const mimeType = "audio/m4a";
     const isFavorites = chat.id === FAVORITES_CHAT_ID;
 
-    await appendSystemMessage(
-      chat.id,
-      localPeerId,
-      isFavorites ? localPeerId : chat.participantPeerId,
-      makeVoiceMessageBody(chat.resolvedTitle),
-      isFavorites ? "delivered" : "sent",
-    );
+    const message: Message = {
+      id: messageId,
+      chatId: chat.id,
+      senderPeerId: localPeerId,
+      targetPeerId: isFavorites ? localPeerId : chat.participantPeerId,
+      kind: "file",
+      body: makeVoiceMessageText(),
+      ttlMs: RELIABLE_TTL_MS,
+      dedupeKey: messageId,
+      status: isFavorites ? "delivered" : "sent",
+      createdAt: now,
+      updatedAt: now,
+      deliveredAt: isFavorites ? now : null,
+    };
 
+    const transfer: FileTransfer = {
+      id: transferId,
+      messageId,
+      chatId: chat.id,
+      direction: "upload",
+      fileName,
+      mimeType,
+      totalBytes: encodedBytes,
+      transferredBytes: isFavorites ? encodedBytes : 0,
+      chunkSize,
+      status: isFavorites ? "completed" : "active",
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    const voiceFileUri = getVoiceFileUri(transferId);
+    if (voiceFileUri) {
+      await ensureVoiceFilesDirectory();
+      await FileSystem.copyAsync({
+        from: recordingUri,
+        to: voiceFileUri,
+      }).catch(() => undefined);
+    }
+
+    await Promise.all([upsertMessage(message), upsertTransfer(transfer)]);
     await loadChats();
-    await loadMessages(chat.id);
+    await refreshChatData(chat.id);
+
+    if (isFavorites) {
+      return;
+    }
+
+    const session: OutgoingFileSession = {
+      transferId,
+      messageId,
+      chatId: chat.id,
+      peerId: chat.participantPeerId,
+      fileName,
+      mimeType,
+      totalBytes: encodedBytes,
+      chunkSize,
+      totalChunks,
+      chunks,
+      started: false,
+      initAttempt: 1,
+      initRetryTimer: null,
+    };
+
+    outgoingFileRef.current.set(transferId, session);
+    await sendFileInit(transferId);
+    scheduleFileInitRetry(transferId);
+  };
+
+  const sendVoiceInvite = async (options?: {
+    type?: VoiceCallIntentType;
+    videoEnabled?: boolean;
+    sdp?: string;
+    candidate?: string;
+    silent?: boolean;
+  }) => {
+    if (!selectedChatId || !localPeerId) {
+      return;
+    }
+
+    const chat = chats.find((item) => item.id === selectedChatId);
+    if (!chat) {
+      return;
+    }
+
+    const intentType = options?.type ?? "call-start";
+    const isSilentIntent =
+      options?.silent === true ||
+      intentType === "webrtc-offer" ||
+      intentType === "webrtc-answer" ||
+      intentType === "webrtc-ice";
+    const isFavorites = chat.id === FAVORITES_CHAT_ID;
+
+    if (!isSilentIntent && intentType === "call-start") {
+      await appendSystemMessage(
+        chat.id,
+        localPeerId,
+        isFavorites ? localPeerId : chat.participantPeerId,
+        makeVoiceMessageBody(chat.resolvedTitle),
+        isFavorites ? "delivered" : "sent",
+      );
+    }
+
+    if (!isSilentIntent && intentType === "call-end") {
+      await appendSystemMessage(
+        chat.id,
+        localPeerId,
+        isFavorites ? localPeerId : chat.participantPeerId,
+        "Вы завершили звонок",
+        isFavorites ? "delivered" : "sent",
+      );
+    }
+
+    if (!isSilentIntent && intentType === "call-accept") {
+      await appendSystemMessage(
+        chat.id,
+        localPeerId,
+        isFavorites ? localPeerId : chat.participantPeerId,
+        "Вы приняли звонок",
+        isFavorites ? "delivered" : "sent",
+      );
+    }
+
+    if (!isSilentIntent && intentType === "video-toggle") {
+      await appendSystemMessage(
+        chat.id,
+        localPeerId,
+        isFavorites ? localPeerId : chat.participantPeerId,
+        options?.videoEnabled ? "Вы включили видео" : "Вы выключили видео",
+        isFavorites ? "delivered" : "sent",
+      );
+    }
+
+    if (!isSilentIntent) {
+      await loadChats();
+      await loadMessages(chat.id);
+    }
 
     if (isFavorites) {
       return;
@@ -1389,8 +1718,17 @@ export function useChatViewModel() {
     service.sendSignal(
       chat.participantPeerId,
       "voice-intent",
-      VOICE_INVITE_TEXT,
+      JSON.stringify({
+        type: intentType,
+        videoEnabled: options?.videoEnabled,
+        sdp: options?.sdp,
+        candidate: options?.candidate,
+      } satisfies VoiceCallIntentPayload),
     );
+  };
+
+  const clearIncomingCallEvent = () => {
+    setIncomingCallEvent(null);
   };
 
   const sendMessage = async () => {
@@ -1477,6 +1815,7 @@ export function useChatViewModel() {
     relayUrl,
     localPeerId,
     chats,
+    onlinePeerIds,
     selectedChatId,
     messages,
     transfers,
@@ -1489,6 +1828,10 @@ export function useChatViewModel() {
     refresh,
     sendMessage,
     sendFile,
+    sendVoiceMessage,
     sendVoiceInvite,
+    incomingCallEvent,
+    clearIncomingCallEvent,
+    getVoiceMessageUri: getVoiceFileUri,
   };
 }

@@ -37,6 +37,7 @@ type BroadcastChannelLike = {
 type BroadcastChannelCtor = new (name: string) => BroadcastChannelLike;
 
 const CHANNEL_NAME = "hex.mesh.discovery.v1";
+const DEFAULT_RELAY_PORT = 8787;
 const PEER_TTL_MS = 20_000;
 const ANNOUNCE_INTERVAL_MS = 5_000;
 const PRUNE_INTERVAL_MS = 6_000;
@@ -50,6 +51,37 @@ type SignalSendOptions = {
   attempt?: number;
   maxAttempts?: number;
 };
+
+function normalizeRelayUrl(raw: string | null | undefined): string | null {
+  const value = (raw ?? "").trim();
+  if (!value) {
+    return null;
+  }
+
+  if (value.startsWith("ws://") || value.startsWith("wss://")) {
+    return value;
+  }
+
+  if (value.startsWith("http://") || value.startsWith("https://")) {
+    try {
+      const parsed = new URL(value);
+      const protocol = parsed.protocol === "https:" ? "wss:" : "ws:";
+      return `${protocol}//${parsed.host}`;
+    } catch {
+      return null;
+    }
+  }
+
+  const hostPart = value.split("/")[0]?.trim();
+  if (!hostPart) {
+    return null;
+  }
+
+  const hasIpv6Port = hostPart.startsWith("[") && hostPart.includes("]:");
+  const hasPort = hasIpv6Port || /:\d+$/.test(hostPart);
+  const hostWithPort = hasPort ? hostPart : `${hostPart}:${DEFAULT_RELAY_PORT}`;
+  return `ws://${hostWithPort}`;
+}
 
 class DiscoveryService {
   private channel: BroadcastChannelLike | null = null;
@@ -65,8 +97,7 @@ class DiscoveryService {
   private statusSubscribers = new Set<(status: DiscoveryStatus) => void>();
 
   setRelayUrl(url: string | null): void {
-    const value = (url ?? "").trim();
-    this.relayUrl = value.length > 0 ? value : null;
+    this.relayUrl = normalizeRelayUrl(url);
 
     if (this.identity && this.announceTimer) {
       this.reconnectTransport();

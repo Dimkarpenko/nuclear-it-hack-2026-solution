@@ -14,10 +14,12 @@
     "check": "npm run typecheck"
   },
   "dependencies": {
+    "@expo/vector-icons": "^15.0.2",
     "@react-navigation/drawer": "^7.9.4",
     "@react-navigation/native": "^7.1.33",
     "@react-navigation/native-stack": "^7.14.4",
     "expo": "~55.0.5",
+    "expo-audio": "~55.0.8",
     "expo-clipboard": "~55.0.8",
     "expo-constants": "~55.0.7",
     "expo-crypto": "~55.0.9",
@@ -30,9 +32,10 @@
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "react-native": "0.83.2",
-    "react-native-safe-area-context": "^5.7.0",
-    "react-native-screens": "^4.24.0",
+    "react-native-safe-area-context": "~5.6.2",
+    "react-native-screens": "~4.23.0",
     "react-native-web": "^0.21.0",
+    "react-native-webrtc": "^124.0.7",
     "ws": "^8.19.0"
   },
   "devDependencies": {

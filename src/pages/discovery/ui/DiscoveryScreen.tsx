@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Modal,
   Pressable,
   ScrollView,
   Text,
@@ -17,11 +16,6 @@ import { styles } from "./DiscoveryScreen.styles";
 
 const SEARCH_WINDOW_MS = 3200;
 
-type PendingPeer = {
-  peerId: string;
-  networkName: string;
-};
-
 function formatAge(lastSeenAt: number): string {
   const delta = Math.max(0, Math.floor((Date.now() - lastSeenAt) / 1000));
   return `${delta} c назад`;
@@ -30,11 +24,20 @@ function formatAge(lastSeenAt: number): string {
 export function DiscoveryScreen() {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { peers, refreshNow, sendPairingIntent } = useDiscoveryViewModel();
+  const {
+    peers,
+    status,
+    relayUrlInput,
+    setRelayUrlInput,
+    isAutoDetectingRelay,
+    refreshNow,
+    applyRelayUrl,
+    autoDetectRelay,
+    useBrowserLocalTransport,
+    sendPairingIntent,
+  } = useDiscoveryViewModel();
   const [isSearching, setIsSearching] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
-  const [pendingPeer, setPendingPeer] = useState<PendingPeer | null>(null);
-  const [nameDraft, setNameDraft] = useState("");
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const beginSearch = async () => {
@@ -66,158 +69,137 @@ export function DiscoveryScreen() {
     };
   }, []);
 
-  const openStartChatDialog = (peerId: string, peerName: string) => {
-    setPendingPeer({
-      peerId,
-      networkName: peerName,
-    });
-    setNameDraft(peerName);
-  };
-
-  const closeStartChatDialog = () => {
-    setPendingPeer(null);
-    setNameDraft("");
-  };
-
-  const confirmStartChat = () => {
-    if (!pendingPeer) {
-      return;
-    }
-
-    const chatName = nameDraft.trim() || pendingPeer.networkName;
-    sendPairingIntent(pendingPeer.peerId, chatName);
+  const startChatWithPeer = (peerId: string, peerName: string) => {
+    sendPairingIntent(peerId).catch(() => undefined);
     navigation.navigate("Main", {
-      openPeerId: pendingPeer.peerId,
-      openPeerName: chatName,
+      openPeerId: peerId,
+      openPeerName: peerName,
       openAt: Date.now(),
     });
-    closeStartChatDialog();
   };
 
   return (
-    <>
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.content}
-      >
-        <View>
-          <Text style={styles.title}>Поиск устройств</Text>
-          <Text style={styles.subtitle}>
-            Нажми кнопку, чтобы найти доступные устройства в локальной сети.
-          </Text>
-        </View>
+    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <View>
+        <Text style={styles.title}>Поиск устройств</Text>
+        <Text style={styles.subtitle}>
+          Нажми кнопку, чтобы найти доступные устройства в локальной сети.
+        </Text>
+      </View>
 
-        <View style={styles.searchCard}>
+      <View style={styles.relayCard}>
+        <Text style={styles.relayTitle}>LAN Relay</Text>
+        <Text style={styles.relayMeta}>
+          Состояние: {status.connectionState}
+        </Text>
+        <Text style={styles.relayMeta}>
+          Текущий URL: {status.relayUrl ?? "-"}
+        </Text>
+
+        <TextInput
+          style={styles.relayInput}
+          value={relayUrlInput}
+          onChangeText={setRelayUrlInput}
+          placeholder="ws://192.168.1.10:8787 или 192.168.1.10"
+          placeholderTextColor="#86a8c7"
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+
+        <View style={styles.relayActions}>
           <Pressable
-            style={styles.searchButton}
-            onPress={() => beginSearch().catch(() => undefined)}
-            disabled={isSearching}
+            style={styles.relayButton}
+            onPress={() => applyRelayUrl().catch(() => undefined)}
           >
-            <Text style={styles.searchButtonText}>
-              {isSearching ? "Ищем устройства..." : "Найти устройства"}
+            <Text style={styles.relayButtonText}>Подключить</Text>
+          </Pressable>
+          <Pressable
+            style={styles.relayButton}
+            onPress={() => autoDetectRelay().catch(() => undefined)}
+            disabled={isAutoDetectingRelay}
+          >
+            <Text style={styles.relayButtonText}>
+              {isAutoDetectingRelay ? "Поиск..." : "Автоопределение"}
             </Text>
           </Pressable>
         </View>
 
-        {isSearching ? (
-          <View style={styles.stateCard}>
-            <ActivityIndicator size="large" color="#65c0ff" />
-            <Text style={styles.stateTitle}>Идет поиск устройств</Text>
-            <Text style={styles.stateSubtitle}>
-              Пожалуйста, подожди несколько секунд
-            </Text>
-          </View>
-        ) : hasSearched && peers.length === 0 ? (
-          <View style={styles.stateCard}>
-            <Text style={styles.stateTitle}>Устройств в сети не найдено</Text>
-            <Text style={styles.stateSubtitle}>
-              Проверь, что второй телефон в той же локальной сети, и попробуй
-              еще раз.
-            </Text>
-          </View>
-        ) : peers.length > 0 ? (
-          <View style={styles.peersBlock}>
-            <Text style={styles.blockTitle}>
-              Найденные устройства ({peers.length})
-            </Text>
-            {peers.map((peer) => (
-              <View key={peer.peerId} style={styles.peerRow}>
-                <Text style={styles.peerName}>{peer.displayName}</Text>
-                <Text style={styles.peerMeta}>
-                  ID: {peer.peerId.slice(0, 20)}
-                </Text>
-                <Text style={styles.peerMeta}>
-                  В сети: {formatAge(peer.lastSeenAt)}
-                </Text>
-                <Pressable
-                  style={styles.startChatButton}
-                  onPress={() =>
-                    openStartChatDialog(peer.peerId, peer.displayName)
-                  }
-                >
-                  <Text style={styles.startChatButtonText}>Начать чат</Text>
-                </Pressable>
-              </View>
-            ))}
-          </View>
-        ) : (
-          <View style={styles.stateCard}>
-            <Text style={styles.stateTitle}>Нажми «Найти устройства»</Text>
-            <Text style={styles.stateSubtitle}>
-              После поиска здесь появится список доступных устройств.
-            </Text>
-          </View>
-        )}
+        <Pressable
+          style={styles.relayFallbackButton}
+          onPress={() => useBrowserLocalTransport().catch(() => undefined)}
+        >
+          <Text style={styles.relayFallbackText}>Отключить relay</Text>
+        </Pressable>
+      </View>
 
-        {hasSearched && peers.length > 0 ? (
-          <View style={styles.tipBlock}>
-            <Text style={styles.tipText}>
-              Устройства найдены. Если список изменился, потяни экран вниз или
-              запусти поиск снова.
-            </Text>
-          </View>
-        ) : null}
-      </ScrollView>
+      <View style={styles.searchCard}>
+        <Pressable
+          style={styles.searchButton}
+          onPress={() => beginSearch().catch(() => undefined)}
+          disabled={isSearching}
+        >
+          <Text style={styles.searchButtonText}>
+            {isSearching ? "Ищем устройства..." : "Найти устройства"}
+          </Text>
+        </Pressable>
+      </View>
 
-      <Modal
-        transparent
-        visible={pendingPeer !== null}
-        animationType="fade"
-        onRequestClose={closeStartChatDialog}
-      >
-        <View style={styles.nameModalBackdrop}>
-          <View style={styles.nameModalCard}>
-            <Text style={styles.nameModalTitle}>Имя собеседника</Text>
-            <Text style={styles.nameModalSubtitle}>Как назвать этот чат?</Text>
-
-            <TextInput
-              value={nameDraft}
-              onChangeText={setNameDraft}
-              style={styles.nameModalInput}
-              placeholder="Например: Алекс"
-              placeholderTextColor="#7e9bb7"
-              autoCapitalize="words"
-              autoCorrect={false}
-            />
-
-            <View style={styles.nameModalActions}>
+      {isSearching ? (
+        <View style={styles.stateCard}>
+          <ActivityIndicator size="large" color="#65c0ff" />
+          <Text style={styles.stateTitle}>Идет поиск устройств</Text>
+          <Text style={styles.stateSubtitle}>
+            Пожалуйста, подожди несколько секунд
+          </Text>
+        </View>
+      ) : hasSearched && peers.length === 0 ? (
+        <View style={styles.stateCard}>
+          <Text style={styles.stateTitle}>Устройств в сети не найдено</Text>
+          <Text style={styles.stateSubtitle}>
+            Проверь, что второй телефон в той же локальной сети, и попробуй еще
+            раз.
+          </Text>
+        </View>
+      ) : peers.length > 0 ? (
+        <View style={styles.peersBlock}>
+          <Text style={styles.blockTitle}>
+            Найденные устройства ({peers.length})
+          </Text>
+          {peers.map((peer) => (
+            <View key={peer.peerId} style={styles.peerRow}>
+              <Text style={styles.peerName}>{peer.displayName}</Text>
+              <Text style={styles.peerMeta}>
+                ID: {peer.peerId.slice(0, 20)}
+              </Text>
+              <Text style={styles.peerMeta}>
+                В сети: {formatAge(peer.lastSeenAt)}
+              </Text>
               <Pressable
-                style={styles.nameModalCancelButton}
-                onPress={closeStartChatDialog}
+                style={styles.startChatButton}
+                onPress={() => startChatWithPeer(peer.peerId, peer.displayName)}
               >
-                <Text style={styles.nameModalCancelText}>Отмена</Text>
-              </Pressable>
-
-              <Pressable
-                style={styles.nameModalConfirmButton}
-                onPress={confirmStartChat}
-              >
-                <Text style={styles.nameModalConfirmText}>Продолжить</Text>
+                <Text style={styles.startChatButtonText}>Начать чат</Text>
               </Pressable>
             </View>
-          </View>
+          ))}
         </View>
-      </Modal>
-    </>
+      ) : (
+        <View style={styles.stateCard}>
+          <Text style={styles.stateTitle}>Нажми «Найти устройства»</Text>
+          <Text style={styles.stateSubtitle}>
+            После поиска здесь появится список доступных устройств.
+          </Text>
+        </View>
+      )}
+
+      {hasSearched && peers.length > 0 ? (
+        <View style={styles.tipBlock}>
+          <Text style={styles.tipText}>
+            Устройства найдены. Если список изменился, потяни экран вниз или
+            запусти поиск снова.
+          </Text>
+        </View>
+      ) : null}
+    </ScrollView>
   );
 }

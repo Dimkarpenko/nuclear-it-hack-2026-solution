@@ -463,8 +463,9 @@ export function useDiscoveryViewModel() {
     sendReliableChatText(peerId, text);
   };
 
-  const sendPairingIntent = (peerId: string, displayName?: string) => {
-    service.sendSignal(peerId, "pairing-intent", displayName ?? null);
+  const sendPairingIntent = async (peerId: string) => {
+    const identity = await getOrCreateDeviceIdentity();
+    service.sendSignal(peerId, "pairing-intent", identity.displayName);
     appendLog(`OUT START CHAT ${peerId.slice(0, 8)}`);
   };
 

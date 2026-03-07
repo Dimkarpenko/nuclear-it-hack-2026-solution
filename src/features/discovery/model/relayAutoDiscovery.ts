@@ -4,6 +4,24 @@ import { NativeModules, Platform } from "react-native";
 const DEFAULT_RELAY_PORT = 8787;
 const PROBE_TIMEOUT_MS = 900;
 
+function isLoopbackHost(host: string): boolean {
+  const normalized = host.trim().toLowerCase();
+  if (!normalized) {
+    return true;
+  }
+
+  if (
+    normalized === "localhost" ||
+    normalized === "127.0.0.1" ||
+    normalized === "::1" ||
+    normalized === "0.0.0.0"
+  ) {
+    return true;
+  }
+
+  return normalized.startsWith("127.");
+}
+
 function normalizeHost(raw: string): string | null {
   const value = raw.trim();
   if (!value) {
@@ -46,6 +64,16 @@ function getHostFromScriptUrl(): string | null {
 
 function getHostFromExpoConstants(): string | null {
   const values = [
+    (
+      Constants as unknown as {
+        expoConfig?: { extra?: { lanRelayHost?: string; relayHost?: string } };
+      }
+    ).expoConfig?.extra?.lanRelayHost,
+    (
+      Constants as unknown as {
+        expoConfig?: { extra?: { lanRelayHost?: string; relayHost?: string } };
+      }
+    ).expoConfig?.extra?.relayHost,
     (Constants as unknown as { expoConfig?: { hostUri?: string } }).expoConfig
       ?.hostUri,
     (Constants as unknown as { expoGoConfig?: { debuggerHost?: string } })
@@ -90,27 +118,30 @@ function extractHostFromRelayUrl(
 
 function collectCandidateHosts(relayHint?: string | null): string[] {
   const set = new Set<string>();
+  const addHost = (host: string | null, allowLoopback = false) => {
+    if (!host) {
+      return;
+    }
+
+    if (!allowLoopback && isLoopbackHost(host)) {
+      return;
+    }
+
+    set.add(host);
+  };
 
   const hintHost = extractHostFromRelayUrl(relayHint);
-  if (hintHost) {
-    set.add(hintHost);
-  }
+  addHost(hintHost, true);
 
   const scriptHost = getHostFromScriptUrl();
-  if (scriptHost) {
-    set.add(scriptHost);
-  }
+  addHost(scriptHost);
 
   const constantsHost = getHostFromExpoConstants();
-  if (constantsHost) {
-    set.add(constantsHost);
-  }
+  addHost(constantsHost);
 
   if (Platform.OS === "web") {
     const webHost = getHostFromWebLocation();
-    if (webHost) {
-      set.add(webHost);
-    }
+    addHost(webHost);
   }
 
   return Array.from(set);
