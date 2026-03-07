@@ -1,0 +1,143 @@
+import { StyleSheet } from "react-native";
+
+export const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#0b1624",
+  },
+  scene: {
+    flex: 1,
+    backgroundColor: "#0b1624",
+  },
+  drawerPanel: {
+    width: "82%",
+    maxWidth: 360,
+    backgroundColor: "#0f2438",
+    borderRightWidth: 1,
+    borderRightColor: "#295271",
+  },
+  drawerContent: {
+    flexGrow: 1,
+    paddingHorizontal: 16,
+    gap: 18,
+  },
+  drawerProfileBlock: {
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: "#254866",
+  },
+  drawerAvatar: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "#f29b50",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
+  },
+  drawerAvatarText: {
+    color: "#31170c",
+    fontSize: 26,
+    fontWeight: "800",
+  },
+  drawerProfileTitle: {
+    color: "#f2f8ff",
+    fontSize: 28,
+    fontWeight: "700",
+  },
+  drawerProfileSubtitle: {
+    marginTop: 2,
+    color: "#78b8ee",
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  drawerSection: {
+    gap: 12,
+  },
+  drawerItem: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#2a5372",
+    backgroundColor: "#15314b",
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+  },
+  drawerToggleRow: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#2a5372",
+    backgroundColor: "#15314b",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  drawerItemLabel: {
+    color: "#eff7ff",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  drawerHint: {
+    color: "#9ec3e3",
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  profilePromptBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(4, 10, 18, 0.72)",
+    justifyContent: "center",
+    paddingHorizontal: 16,
+  },
+  profilePromptCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#2a5372",
+    backgroundColor: "#10283e",
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+  },
+  profilePromptTitle: {
+    color: "#eff7ff",
+    fontSize: 20,
+    fontWeight: "800",
+  },
+  profilePromptSubtitle: {
+    marginTop: 6,
+    color: "#9ec1de",
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  profilePromptInput: {
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: "#2f5a7b",
+    borderRadius: 10,
+    backgroundColor: "#14324a",
+    color: "#eff7ff",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+  },
+  profilePromptError: {
+    marginTop: 8,
+    color: "#ff9aa8",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  profilePromptButton: {
+    marginTop: 12,
+    borderRadius: 10,
+    backgroundColor: "#65c0ff",
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  profilePromptButtonDisabled: {
+    opacity: 0.6,
+  },
+  profilePromptButtonText: {
+    color: "#041627",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+});
