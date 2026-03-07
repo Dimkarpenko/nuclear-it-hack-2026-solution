@@ -94,7 +94,9 @@ class DiscoveryService {
   getStatus(): DiscoveryStatus {
     return {
       isRunning: this.announceTimer !== null,
-      transport: this.channel ? "broadcast-web" : "unavailable",
+      transport: this.channel ? "broadcast-web-local" : "unavailable",
+      scope: this.channel ? "same-device-browser" : "local-network",
+      internetRequired: false,
       localPeerId: this.identity?.deviceId ?? null,
     };
   }
@@ -144,6 +146,15 @@ class DiscoveryService {
     };
 
     this.channel.postMessage(JSON.stringify(wire));
+  }
+
+  sendChatText(toPeerId: string, text: string): void {
+    const payload = text.trim();
+    if (!payload) {
+      return;
+    }
+
+    this.sendSignal(toPeerId, "chat-text", payload);
   }
 
   private createChannel(): BroadcastChannelLike | null {
@@ -199,7 +210,7 @@ class DiscoveryService {
         peerId: parsed.peerId,
         displayName: parsed.displayName,
         publicKey: parsed.publicKey,
-        transport: "broadcast-web",
+        transport: "broadcast-web-local",
         lastSeenAt: Date.now(),
       });
       this.emitPeers();

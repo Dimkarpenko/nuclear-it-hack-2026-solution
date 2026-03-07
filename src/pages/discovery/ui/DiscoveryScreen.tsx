@@ -1,4 +1,5 @@
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { useState } from "react";
+import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 
 import { useDiscoveryViewModel } from "@/features/discovery";
 import { styles } from "./DiscoveryScreen.styles";
@@ -9,7 +10,23 @@ function formatAge(lastSeenAt: number): string {
 }
 
 export function DiscoveryScreen() {
-  const { status, peers, logs, refreshNow, sendPing } = useDiscoveryViewModel();
+  const { status, peers, logs, refreshNow, sendPing, sendChatText } =
+    useDiscoveryViewModel();
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+
+  const updateDraft = (peerId: string, value: string) => {
+    setDrafts((prev) => ({ ...prev, [peerId]: value }));
+  };
+
+  const submitChat = (peerId: string) => {
+    const text = (drafts[peerId] ?? "").trim();
+    if (!text) {
+      return;
+    }
+
+    sendChatText(peerId, text);
+    setDrafts((prev) => ({ ...prev, [peerId]: "" }));
+  };
 
   return (
     <ScrollView
@@ -27,6 +44,10 @@ export function DiscoveryScreen() {
           Running: {status.isRunning ? "yes" : "no"}
         </Text>
         <Text style={styles.statusRow}>Transport: {status.transport}</Text>
+        <Text style={styles.statusRow}>Scope: {status.scope}</Text>
+        <Text style={styles.statusRow}>
+          Internet required: {status.internetRequired ? "yes" : "no"}
+        </Text>
         <Text style={styles.statusRow}>
           Local peer: {status.localPeerId ?? "-"}
         </Text>
@@ -55,6 +76,19 @@ export function DiscoveryScreen() {
                 onPress={() => sendPing(peer.peerId)}
               >
                 <Text style={styles.pingButtonText}>Send ping</Text>
+              </Pressable>
+              <TextInput
+                value={drafts[peer.peerId] ?? ""}
+                onChangeText={(value) => updateDraft(peer.peerId, value)}
+                style={styles.chatInput}
+                placeholder="Type local message"
+                placeholderTextColor="#7e86a8"
+              />
+              <Pressable
+                style={styles.chatButton}
+                onPress={() => submitChat(peer.peerId)}
+              >
+                <Text style={styles.chatButtonText}>Send local message</Text>
               </Pressable>
             </View>
           ))

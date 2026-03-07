@@ -23,6 +23,8 @@ export function useDiscoveryViewModel() {
   const [status, setStatus] = useState<DiscoveryStatus>({
     isRunning: false,
     transport: "unavailable",
+    scope: "local-network",
+    internetRequired: false,
     localPeerId: null,
   });
   const [peers, setPeers] = useState<DiscoveredPeer[]>([]);
@@ -87,7 +89,7 @@ export function useDiscoveryViewModel() {
         peerId,
         displayName: "Peer",
         publicKey: "",
-        transport: "broadcast-web",
+        transport: "broadcast-web-local",
         lastSeenAt: Date.now(),
       },
     )}`;
@@ -104,11 +106,35 @@ export function useDiscoveryViewModel() {
     );
   };
 
+  const sendChatText = (peerId: string, text: string) => {
+    const payload = text.trim();
+    if (!payload) {
+      return;
+    }
+
+    service.sendChatText(peerId, payload);
+
+    const target = peers.find((peer) => peer.peerId === peerId);
+    const title = target ? formatPeerLine(target) : peerId.slice(0, 8);
+
+    setLogs((prev) =>
+      [
+        {
+          id: `${Date.now()}-${Math.random()}`,
+          timestamp: Date.now(),
+          text: `OUT CHAT ${title}: ${payload}`,
+        },
+        ...prev,
+      ].slice(0, 40),
+    );
+  };
+
   return {
     status,
     peers,
     logs,
     refreshNow,
     sendPing,
+    sendChatText,
   };
 }

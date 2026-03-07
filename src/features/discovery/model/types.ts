@@ -1,4 +1,6 @@
-export type DiscoveryTransport = "broadcast-web" | "unavailable";
+export type DiscoveryTransport = "broadcast-web-local" | "unavailable";
+
+export type DiscoveryScope = "same-device-browser" | "local-network";
 
 export interface DiscoveredPeer {
   peerId: string;
@@ -8,7 +10,7 @@ export interface DiscoveredPeer {
   lastSeenAt: number;
 }
 
-export type SignalKind = "ping" | "pong" | "pairing-intent";
+export type SignalKind = "ping" | "pong" | "pairing-intent" | "chat-text";
 
 export interface DiscoverySignal {
   id: string;
@@ -22,6 +24,8 @@ export interface DiscoverySignal {
 export interface DiscoveryStatus {
   isRunning: boolean;
   transport: DiscoveryTransport;
+  scope: DiscoveryScope;
+  internetRequired: false;
   localPeerId: string | null;
 }
 
