@@ -30,7 +30,7 @@ export function HomeScreen({ navigation }: Props) {
     <View style={styles.container}>
       <Text style={styles.title}>Local messenger MVP initialized.</Text>
       <Text style={styles.subtitle}>
-        Stage 4 in progress: local discovery and signaling.
+        Stage 8 in progress: reliable local chat binding.
       </Text>
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Device</Text>
@@ -60,6 +60,12 @@ export function HomeScreen({ navigation }: Props) {
         onPress={() => navigation.navigate("Discovery")}
       >
         <Text style={styles.secondaryButtonText}>Open discovery</Text>
+      </Pressable>
+      <Pressable
+        style={styles.secondaryButton}
+        onPress={() => navigation.navigate("Chat")}
+      >
+        <Text style={styles.secondaryButtonText}>Open chats</Text>
       </Pressable>
     </View>
   );

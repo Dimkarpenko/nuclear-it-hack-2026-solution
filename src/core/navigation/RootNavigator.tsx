@@ -1,5 +1,6 @@
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 
+import { ChatScreen } from "@/pages/chat";
 import { DiscoveryScreen } from "@/pages/discovery";
 import { HomeScreen } from "@/pages/home";
 import { PairingScreen } from "@/pages/pairing";
@@ -8,6 +9,7 @@ export type RootStackParamList = {
   Home: undefined;
   Pairing: undefined;
   Discovery: undefined;
+  Chat: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -40,6 +42,16 @@ export function RootNavigator() {
         component={DiscoveryScreen}
         options={{
           title: "Discovery",
+          headerStyle: { backgroundColor: "#101326" },
+          headerTintColor: "#f2f5ff",
+          headerShadowVisible: false,
+        }}
+      />
+      <Stack.Screen
+        name="Chat"
+        component={ChatScreen}
+        options={{
+          title: "Chats",
           headerStyle: { backgroundColor: "#101326" },
           headerTintColor: "#f2f5ff",
           headerShadowVisible: false,
